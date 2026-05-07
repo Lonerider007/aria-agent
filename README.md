@@ -56,7 +56,7 @@ API built and tested. Run: uvicorn main:app --reload
 
 ---
 
-## What's New in v1.1.0
+## What's New in v1.2.0
 
 - **Live Stream Bar** — real-time status ticker during execution (`◉ Writing auth.py... step 3`)
 - **AST Validator** — catches syntax and type errors before running code

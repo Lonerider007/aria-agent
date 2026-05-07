@@ -7,6 +7,8 @@ ARIA is an open-source CLI agent that works inside your project boundaries like 
 
 ---
 
+**Website:** https://lonerider007.github.io/aria-landing/
+
 ## Install
 
 ```bash

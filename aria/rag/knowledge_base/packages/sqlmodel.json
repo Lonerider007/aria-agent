@@ -1,0 +1,23 @@
+[
+  {
+    "id": "sqlm_py314",
+    "tags": ["sqlmodel", "Python 3.14", "Optional", "field", "type"],
+    "title": "SQLModel + Python 3.14 compatibility",
+    "content": "SQLModel 0.0.19 and 0.0.20 have known incompatibility with Python 3.14. The 'Optional' type without subscript causes failures in pydantic model construction. Use 'int | None' syntax or migrate to pure SQLAlchemy 2.0 with mapped_column.",
+    "example": "# Wrong\nid: Optional = Field(default=None, primary_key=True)\n\n# Correct\nid: int | None = Field(default=None, primary_key=True)"
+  },
+  {
+    "id": "sqlm_session",
+    "tags": ["sqlmodel", "session", "exec", "select"],
+    "title": "SQLModel Session usage",
+    "content": "SQLModel uses .exec() for queries, not .execute(). session.exec(select(Model)) returns results directly.",
+    "example": "with Session(engine) as session:\n    users = session.exec(select(User)).all()"
+  },
+  {
+    "id": "sqlm_alternative",
+    "tags": ["sqlmodel", "alternative", "sqlalchemy", "orm"],
+    "title": "SQLAlchemy 2.0 as SQLModel alternative",
+    "content": "When SQLModel has compatibility issues, use SQLAlchemy 2.0 directly with DeclarativeBase and mapped_column for full Python 3.14 support.",
+    "example": "from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column\n\nclass Base(DeclarativeBase):\n    pass\n\nclass User(Base):\n    __tablename__ = 'user'\n    id: Mapped[int] = mapped_column(primary_key=True)\n    email: Mapped[str] = mapped_column(unique=True)"
+  }
+]

@@ -1,0 +1,74 @@
+[
+  {
+    "id": "opt001",
+    "tags": ["Optional", "type annotation", "Python 3.14", "sqlmodel", "pydantic"],
+    "error": "Optional used without type parameter",
+    "context": "id: Optional = Field(default=None)",
+    "solution": "Use 'Optional[int]' or 'int | None' instead of bare 'Optional'",
+    "example_fix": "id: int | None = Field(default=None, primary_key=True)"
+  },
+  {
+    "id": "opt002",
+    "tags": ["pydantic", "ValidationError", "field", "type"],
+    "error": "pydantic ValidationError on model field",
+    "context": "pydantic.errors.PydanticUserError",
+    "solution": "Ensure all SQLModel/Pydantic fields have explicit type annotations with proper types",
+    "example_fix": "id: int | None = Field(default=None)"
+  },
+  {
+    "id": "sqlm001",
+    "tags": ["sqlmodel", "Python 3.14", "compatibility", "table"],
+    "error": "SQLModel table=True fails on Python 3.14",
+    "context": "sqlmodel.main line 455 __new__",
+    "solution": "SQLModel 0.0.19/0.0.20 has known issues with Python 3.14. Use SQLAlchemy directly or wait for SQLModel update. Alternative: use pure pydantic + SQLAlchemy.",
+    "example_fix": "from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column"
+  },
+  {
+    "id": "pip001",
+    "tags": ["pip", "timeout", "install", "slow"],
+    "error": "pip install timed out",
+    "context": "ERROR: command timed out",
+    "solution": "Use the venv pip directly with full path instead of system pip",
+    "example_fix": ".venv/bin/pip install -r requirements.txt"
+  },
+  {
+    "id": "pytest001",
+    "tags": ["pytest", "not found", "module", "import error"],
+    "error": "No module named pytest",
+    "context": "python: No module named pytest",
+    "solution": "Use the venv Python, not system Python",
+    "example_fix": ".venv/bin/python -m pytest tests/ -v"
+  },
+  {
+    "id": "import001",
+    "tags": ["import", "ModuleNotFoundError", "venv", "not found"],
+    "error": "ModuleNotFoundError for installed package",
+    "context": "ModuleNotFoundError: No module named",
+    "solution": "Package is installed in venv but wrong Python is being used. Use venv python.",
+    "example_fix": ".venv/bin/python script.py"
+  },
+  {
+    "id": "pydcore001",
+    "tags": ["pydantic-core", "version", "not found", "pip"],
+    "error": "pydantic-core version not available",
+    "context": "Could not find a version that satisfies the requirement pydantic-core==",
+    "solution": "pydantic-core version is tied to Python version. Use latest pydantic (>=2.13) which auto-selects compatible pydantic-core.",
+    "example_fix": "pydantic>=2.13.0  (without pinning pydantic-core)"
+  },
+  {
+    "id": "py314_ast",
+    "tags": ["Python 3.14", "ast.Str", "pytest", "AttributeError", "ast"],
+    "error": "AttributeError: module 'ast' has no attribute 'Str'",
+    "context": "pytest crash on Python 3.14",
+    "solution": "ast.Str was removed in Python 3.14. Only pytest>=8.1.0 supports Python 3.14. Always use pytest>=8.1.0 on Python 3.14+.",
+    "example_fix": "pip install 'pytest>=8.1.0'"
+  },
+  {
+    "id": "py314_pytest",
+    "tags": ["Python 3.14", "pytest", "PluggyTeardownRaisedWarning", "FixtureDef"],
+    "error": "ImportError: cannot import name 'FixtureDef' from 'pytest'",
+    "context": "pytest-asyncio incompatible with Python 3.14",
+    "solution": "pytest-asyncio<1.0 is incompatible with Python 3.14. Use pytest>=8.1.0 and pytest-asyncio>=0.23.0 or remove asyncio completely.",
+    "example_fix": "pip install 'pytest>=8.1.0' 'pytest-asyncio>=0.23.0'"
+  }
+]

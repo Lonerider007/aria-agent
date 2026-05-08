@@ -30,6 +30,7 @@ COMMANDS = {
     "/memory":    "Show memory  (/memory project-name)",
     "/tools":     "List agent tools",
     "/tokens":    "Show token usage this session",
+    "/sandbox":   "Create or switch to sandbox workspace  (/sandbox new <name>)",
     "/exit":      "Exit ARIA",
 }
 
@@ -59,6 +60,23 @@ def handle(inp: str, agent, state: dict) -> bool:
     elif cmd == "/review":
         agent.run("Review the current codebase. Check for: bugs, security issues, bad practices, missing error handling, and improvement opportunities. Be specific and actionable.")
 
+    elif cmd == "/sandbox":
+        from aria.tools.sandbox import create_sandbox, list_sandboxes, get_sandbox_path
+        sub = arg.split() if arg else []
+        if sub and sub[0] == "new":
+            sname = sub[1] if len(sub) > 1 else "default"
+            path = create_sandbox(sname)
+            os.chdir(path)
+            state["workspace"] = path
+            console.print(f"[aria.success]✓[/aria.success] Sandbox '[aria.cyan]{sname}[/aria.cyan]' ready at {path}")
+        elif sub and sub[0] == "list":
+            console.print(list_sandboxes())
+        else:
+            path = create_sandbox("default")
+            os.chdir(path)
+            state["workspace"] = path
+            console.print(f"[aria.success]✓[/aria.success] Sandbox ready: [aria.cyan]{path}[/aria.cyan]")
+
     elif cmd == "/history":
         if not hasattr(agent, '_timeline') or not agent._timeline:
             console.print("[aria.dim]No history yet.[/aria.dim]")
@@ -68,8 +86,14 @@ def handle(inp: str, agent, state: dict) -> bool:
                 console.print(f"  [aria.dim]{entry['time']}[/aria.dim]  [aria.cyan]{entry['event']}[/aria.cyan]")
 
     elif cmd == "/tokens":
-        total = sum(len(str(m.get("content", ""))) // 4 for m in agent.messages)
-        console.print(f"  [aria.dim]Estimated tokens in context:[/aria.dim] [aria.cyan]~{total:,}[/aria.cyan]")
+        usage = agent.token_usage
+        t = Table(box=box.SIMPLE, show_header=False)
+        t.add_column("", style="aria.dim")
+        t.add_column("", style="aria.cyan")
+        t.add_row("Context tokens (est.)", f"~{usage['prompt']:,}")
+        t.add_row("Messages in context",   str(len(agent.messages)))
+        t.add_row("Turns this session",    str(agent.turn))
+        console.print(t)
 
     elif cmd == "/init":
         ws = arg or os.getcwd()

@@ -1,12 +1,22 @@
 import sys
-import tty
-import termios
 from rich.prompt import Prompt
+
+try:
+    import tty
+    import termios
+    _HAS_TERMIOS = True
+except ImportError:
+    _HAS_TERMIOS = False  # Windows
 from rich.rule import Rule
 from aria.ui.console import console
 
 
 def masked_input(prompt: str = "") -> str:
+    if not _HAS_TERMIOS:
+        # Windows fallback — use getpass
+        import getpass
+        return getpass.getpass(prompt)
+
     sys.stdout.write(prompt)
     sys.stdout.flush()
     chars = []

@@ -56,7 +56,11 @@ def list_files(path: str = ".", recursive: bool = False) -> str:
 
 def search_in_files(pattern: str, path: str = ".", file_pattern: str = None) -> str:
     from aria.tools.shell import run_command
-    cmd = f'grep -rn "{pattern}" {path}'
+    import shlex
+    safe_pattern = shlex.quote(pattern)
+    safe_path    = shlex.quote(str(Path(path).resolve()))
+    cmd = f'grep -rn {safe_pattern} {safe_path}'
     if file_pattern:
-        cmd += f' --include="{file_pattern}"'
+        safe_fp = shlex.quote(file_pattern)
+        cmd += f' --include={safe_fp}'
     return run_command(cmd)

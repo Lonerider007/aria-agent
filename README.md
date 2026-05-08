@@ -62,22 +62,17 @@ API built and tested. Run: uvicorn main:app --reload
 
 ## What's New in v1.4.0
 
-- **`/history`** — session timeline with timestamps
-- **`/init`** — initialize ARIA in any existing project
-- **`/tokens`** — estimated token usage in current session
-- **English-only responses** — consistent output regardless of input language
-- **External env detection** — Colab/server errors get code fixes, not local execution
-- **Livestream bar fix** — no more repeated text during streaming
-
-## What's New in v1.3.0
-
-- **Live Stream Bar** — real-time status ticker during execution (`◉ Writing auth.py... step 3`)
-- **AST Validator** — catches syntax and type errors before running code
-- **RAG + Web Search** — searches real documentation when stuck on errors
-- **Loop Detection + Pivot** — detects repeated failures, tries alternative approach
-- **Slash commands** — `/fix`, `/test`, `/explain`, `/commit`, `/review`
-- **Git tools** — commit, diff, branch from natural language
-- **Project memory** — remembers context across sessions
+- **Humanized tool display** — `◉ Writing auth.py...` instead of raw tool names
+- **Persistent token counter** — bottom bar shows `↑ 1.2k tokens · 3 turns · 2m 30s`
+- **Internet access** — `search_web` tool for real-time information
+- **Config system** — first run saves settings, next run is instant
+- **Rate limit & 500 error handling** — clean messages, auto-retry
+- **`/history`, `/init`, `/tokens`** — new slash commands
+- **`--quiet` mode** — hide tool details, show only final report
+- **Context auto-trim** — prevents context overflow crashes
+- **Bulk operation fix** — uses `rm -rf` for bulk deletions
+- **English-only responses** — consistent regardless of input language
+- **Frozen header** — ARIA info stays visible at startup
 
 ---
 

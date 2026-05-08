@@ -39,3 +39,23 @@ def get(key: str, fallback=None):
         if env_val:
             return env_val
     return cfg.get(key, fallback)
+
+
+def is_configured() -> bool:
+    """Returns True if user has already agreed to TnC and set workspace."""
+    cfg = load_config()
+    return cfg.get("tnc_agreed", False) and bool(cfg.get("workspace", ""))
+
+
+def mark_configured(api_key: str, workspace: str, model: str):
+    """Save user's choices permanently."""
+    from pathlib import Path
+    # Validate workspace — must exist or be creatable
+    ws = str(Path(workspace).expanduser().resolve())
+    Path(ws).mkdir(parents=True, exist_ok=True)
+    cfg = load_config()
+    cfg["tnc_agreed"]     = True
+    cfg["api_key"]        = api_key
+    cfg["workspace"]      = ws   # always save resolved path
+    cfg["default_model"]  = model
+    save_config(cfg)

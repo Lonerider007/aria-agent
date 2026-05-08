@@ -11,10 +11,13 @@ from pathlib import Path
 from aria.ast_validator import ASTValidator
 from aria.rag import RAGRetriever
 from aria.ui import livestream
+from aria.ui.livestream import update_tokens
+from aria.ui.tool_phrases import get_phrase
 
 _ast_validator = ASTValidator()
 _rag = RAGRetriever()
 
+from aria.tools.web import search_web
 from aria.tools.files import (
     read_file, write_file, edit_file,
     delete_file, list_files, search_in_files
@@ -30,6 +33,7 @@ from aria.memory.store import save_memory, read_memory
 from aria.memory.context import load_project_context
 
 TOOL_MAP = {
+    "search_web":          search_web,
     "read_file":           read_file,
     "write_file":          write_file,
     "edit_file":           edit_file,
@@ -56,6 +60,7 @@ TOOL_MAP = {
 }
 
 TOOLS = [
+    {"type":"function","function":{"name":"search_web","description":"Search the internet for any information not available internally. Use when user asks about current events, latest versions, documentation, or any external knowledge.","parameters":{"type":"object","properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","default":5}},"required":["query"]}}},
     {"type":"function","function":{"name":"read_file","description":"Read file contents","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}},
     {"type":"function","function":{"name":"write_file","description":"Create or overwrite a file","parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}}},
     {"type":"function","function":{"name":"edit_file","description":"Replace exact string in a file. Shows diff.","parameters":{"type":"object","properties":{"path":{"type":"string"},"old_str":{"type":"string"},"new_str":{"type":"string"}},"required":["path","old_str","new_str"]}}},
@@ -88,10 +93,11 @@ SILENT_TOOLS = {
 
 
 class Agent:
-    def __init__(self, client: OpenAI, model: str):
+    def __init__(self, client: OpenAI, model: str, quiet: bool = False):
         self.client    = client
         self.model     = model
         self.turn      = 0
+        self.quiet     = quiet
         self._timeline = []
         self.reset_messages()
 
@@ -101,37 +107,93 @@ class Agent:
             "event": event
         })
 
+    @property
+    def token_usage(self) -> dict:
+        prompt_tokens = sum(len(str(m.get("content", ""))) // 4 for m in self.messages)
+        return {"prompt": prompt_tokens, "total": prompt_tokens}
+
     def reset_messages(self):
         user_mem = read_memory()
         self.messages = [{
             "role": "system",
             "content": SYSTEM_PROMPT.format(
                 cwd=os.getcwd(),
-                home=str(Path.home()) if os.path.exists("/home/sumit") else "/home/sumit",
+                home=str(Path.home()),
                 time=datetime.now().strftime("%Y-%m-%d %H:%M"),
                 user_memory=user_mem
             )
         }]
 
+    def _trim_context(self, max_tokens: int = 28000):
+        """Remove oldest non-system messages if context is too large."""
+        estimated = sum(len(str(m.get("content", ""))) // 4 for m in self.messages)
+        while estimated > max_tokens and len(self.messages) > 3:
+            # Remove oldest non-system message pair
+            if self.messages[1]["role"] in ("user", "assistant"):
+                self.messages.pop(1)
+                if len(self.messages) > 1 and self.messages[1]["role"] in ("assistant", "tool"):
+                    self.messages.pop(1)
+            estimated = sum(len(str(m.get("content", ""))) // 4 for m in self.messages)
+
     def run(self, user_input: str):
         self.turn += 1
         self._log(f"Task: {user_input[:60]}")
+        self._trim_context()
         self.messages.append({"role": "user", "content": user_input})
         step_num = 0
-        recent_errors = []   # track repeated errors
-        MAX_STEPS = 80       # hard cap per task
+        recent_errors = []
+        MAX_STEPS = 80
+        self._pivot_count = 0  # reset per task
+
+        # Warn if context still large after trim
+        ctx_est = sum(len(str(m.get("content","")))//4 for m in self.messages)
+        if ctx_est > 20000:
+            console.print(f"  [aria.warning]⚠[/aria.warning] [aria.dim]Context large (~{ctx_est:,} tokens). Use /clear to reset.[/aria.dim]")
+
+        invalid_tool_retries = 0
 
         while step_num < MAX_STEPS:
             livestream.set_thinking()
-            msg_dict, tool_calls, text = stream_response(
-                self.client, self.model, self.messages, TOOLS
-            )
+            try:
+                msg_dict, tool_calls, text = stream_response(
+                    self.client, self.model, self.messages, TOOLS
+                )
+                invalid_tool_retries = 0  # reset on success
+            except RuntimeError as e:
+                if "SERVER_ERROR" in str(e):
+                    console.print(
+                        "\n  [aria.warning]⚠[/aria.warning] [aria.dim]Ollama server error (500). Retrying...[/aria.dim]"
+                    )
+                    import time; time.sleep(3)
+                    continue
+                if "RATE_LIMIT" in str(e):
+                    console.print(
+                        "\n  [aria.error]◉[/aria.error] [aria.warning]Ollama usage limit reached.[/aria.warning]\n"
+                        "  [aria.dim]Options:[/aria.dim]\n"
+                        "  [aria.dim]  • Wait for weekly reset[/aria.dim]\n"
+                        "  [aria.dim]  • Use a different model: aria --model llama3.3[/aria.dim]\n"
+                        "  [aria.dim]  • Upgrade at ollama.com/upgrade[/aria.dim]"
+                    )
+                    break
+                if "CONTEXT_TOO_LONG" in str(e):
+                    console.print("\n  [aria.warning]⚠[/aria.warning] [aria.dim]Context too long. Use /clear to reset.[/aria.dim]")
+                    break
+                if "INVALID_TOOL_ARGS" in str(e):
+                    invalid_tool_retries += 1
+                    if invalid_tool_retries >= 3:
+                        console.print("\n  [aria.warning]⚠[/aria.warning] [aria.dim]Cannot complete bulk operation automatically. Use run_command with rm -rf for bulk deletion.[/aria.dim]")
+                        break
+                    self.messages.append({"role": "user", "content": "Use run_command with a single shell command instead of multiple delete_file calls. For example: rm -rf dir1 dir2 dir3"})
+                    continue
+                raise
             self.messages.append(msg_dict)
 
             if not tool_calls:
                 print_response(text)
                 self._log("Task complete")
                 livestream.set_done("Task complete")
+                tok = sum(len(str(m.get("content",""))) // 4 for m in self.messages)
+                update_tokens(tok, self.turn)
                 break
 
             rejected = False
@@ -144,14 +206,13 @@ class Agent:
 
                 if name not in SILENT_TOOLS:
                     step_num += 1
+                    phrase = get_phrase(name, args)
                     livestream.update(name, args, step=step_num)
-                    key_arg = next(iter(args.values()), "") if args else ""
-                    preview = repr(key_arg)[:70] if isinstance(key_arg, str) else ""
-                    console.print(
-                        f"  [aria.step]{step_num}.[/aria.step] "
-                        f"[aria.tool]{name}[/aria.tool]  "
-                        f"[aria.dim]{preview}[/aria.dim]"
-                    )
+                    if not self.quiet:
+                        console.print(
+                            f"  [aria.cyan]◉[/aria.cyan] [aria.dim]{phrase}[/aria.dim]",
+                            end="\n"
+                        )
 
                 fn = TOOL_MAP.get(name)
                 try:

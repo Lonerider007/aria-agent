@@ -55,10 +55,9 @@ def _search(query: str, max_results: int) -> List[dict]:
             results = list(ddgs.text(query, max_results=max_results, timelimit="y"))
         return results
     except Exception:
-        # Fallback without site filter
         try:
             with DDGS() as ddgs:
-                return list(DDGS().text(query, max_results=max_results))
+                return list(ddgs.text(query, max_results=max_results))
         except Exception:
             return []
 

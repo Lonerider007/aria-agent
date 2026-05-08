@@ -55,7 +55,10 @@ def list_projects() -> str:
     for d in proj_root.iterdir():
         meta_f = d / "meta.json"
         if meta_f.exists():
-            meta = json.loads(meta_f.read_text())
+            try:
+                meta = json.loads(meta_f.read_text())
+            except (json.JSONDecodeError, OSError):
+                continue
             results.append(f"[{meta.get('status','?')}] {meta['name']}  —  {meta.get('stack','')}  →  {meta.get('path','')}")
     return "\n".join(results) if results else "(no projects)"
 

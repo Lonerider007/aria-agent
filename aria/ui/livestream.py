@@ -106,32 +106,49 @@ def print_bar():
     )
 
 
+_token_state = {"tokens": 0, "turns": 0, "session_start": time.time()}
+
+
+def update_tokens(token_count: int, turns: int):
+    with _lock:
+        _token_state["tokens"]  = token_count
+        _token_state["turns"]   = turns
+
+
 def get_toolbar():
     with _lock:
         msg     = _state["message"]
         step    = _state["step"]
         elapsed = time.time() - _state["last_update"]
+        tokens  = _token_state["tokens"]
+        turns   = _token_state["turns"]
+        sess_s  = int(time.time() - _token_state["session_start"])
 
-    # Watchdog
+    # Token display
+    tok_str = f"{tokens/1000:.1f}k" if tokens >= 1000 else str(tokens)
+    sess_str = f"{sess_s//60}m {sess_s%60}s" if sess_s >= 60 else f"{sess_s}s"
+
+    # Status
     if elapsed > 30 and msg != "Ready":
-        suffix = f" ({int(elapsed)}s)"
-        icon   = "⚠"
-        color  = "ansiyellow"
+        icon, color = "⚠", "ansiyellow"
+        status = f"{msg} ({int(elapsed)}s)"
+    elif msg == "Ready":
+        icon, color = "◉", "ansibrightblack"
+        status = "Ready"
+    elif any(w in msg.lower() for w in ["error", "fail"]):
+        icon, color = "✗", "ansired"
+        status = msg
+    elif any(w in msg.lower() for w in ["complete", "done", "pass"]):
+        icon, color = "✓", "ansigreen"
+        status = msg
+    elif "thinking" in msg.lower():
+        icon, color = "◉", "ansimagenta"
+        status = msg
     else:
-        suffix = f"  step {step}" if step > 0 else ""
-        if msg == "Ready":
-            icon, color = "◉", "ansibrightblack"
-        elif any(w in msg.lower() for w in ["error", "fail"]):
-            icon, color = "✗", "ansired"
-        elif any(w in msg.lower() for w in ["test", "running"]):
-            icon, color = "◉", "ansicyan"
-        elif any(w in msg.lower() for w in ["complete", "done", "pass"]):
-            icon, color = "✓", "ansigreen"
-        elif "thinking" in msg.lower():
-            icon, color = "◉", "ansimagenta"
-        else:
-            icon, color = "◉", "ansibrightmagenta"
+        icon, color = "◉", "ansibrightmagenta"
+        status = f"{msg}  step {step}" if step > 0 else msg
 
     return HTML(
-        f'<style bg="ansiblack" fg="{color}"> {icon} ARIA  {msg}{suffix} </style>'
+        f'<style bg="ansiblack" fg="{color}"> {icon} ARIA  {status} </style>'
+        f'<style bg="ansiblack" fg="ansibrightblack">  ↑ {tok_str} tokens · {turns} turns · {sess_str} </style>'
     )

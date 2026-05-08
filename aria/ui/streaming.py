@@ -10,6 +10,19 @@ from .console import console
 PULSE = ["·", "◦", "○", "◉", "●", "◉", "○", "◦"]
 
 
+def _fmt_time(seconds: float) -> str:
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    return f"{int(seconds // 60)}m {int(seconds % 60)}s"
+
+
+def _fmt_tokens(text: str) -> str:
+    est = max(1, len(text) // 4)
+    if est >= 1000:
+        return f"{est/1000:.1f}k"
+    return str(est)
+
+
 def stream_response(client, model: str, messages: list, tools: list):
     """
     Stream response from model.
@@ -19,6 +32,8 @@ def stream_response(client, model: str, messages: list, tools: list):
     collected_tool_calls = {}
     pulse_idx = 0
     last_pulse = time.time()
+    start_time = time.time()
+    total_chars = sum(len(str(m.get("content", ""))) for m in messages)
 
     with Live(console=console, refresh_per_second=30) as live:
         live.update(Text.from_markup(f"\n  [#7C3AED]◉[/#7C3AED] [#6B7280]Thinking...[/#6B7280]"))
@@ -39,12 +54,15 @@ def stream_response(client, model: str, messages: list, tools: list):
 
                 delta = choice.delta
 
-                # Pulse animation on every chunk
+                # Pulse + timer + token count
                 now = time.time()
                 if now - last_pulse > 0.06:
-                    icon = PULSE[pulse_idx % len(PULSE)]
+                    icon    = PULSE[pulse_idx % len(PULSE)]
+                    elapsed = _fmt_time(now - start_time)
+                    tokens  = _fmt_tokens(str(total_chars + len(collected_content)))
                     live.update(Text.from_markup(
                         f"\n  [#7C3AED]{icon}[/#7C3AED] [#6B7280]Thinking...[/#6B7280]"
+                        f"  [#4A4A6A]{elapsed} · ↑ {tokens} tokens[/#4A4A6A]"
                     ))
                     pulse_idx += 1
                     last_pulse = now
@@ -79,6 +97,15 @@ def stream_response(client, model: str, messages: list, tools: list):
 
         except Exception as e:
             live.update(Text(""))
+            err_str = str(e)
+            if "prompt too long" in err_str or "context length" in err_str:
+                raise RuntimeError("CONTEXT_TOO_LONG") from e
+            if "invalid tool call" in err_str or ("invalid_request" in err_str and "tool" in err_str.lower()):
+                raise RuntimeError("INVALID_TOOL_ARGS") from e
+            if "429" in err_str or "rate limit" in err_str.lower() or "usage limit" in err_str.lower() or "weekly" in err_str.lower():
+                raise RuntimeError("RATE_LIMIT") from e
+            if "500" in err_str or "internal service error" in err_str.lower() or "InternalServerError" in err_str:
+                raise RuntimeError("SERVER_ERROR") from e
             raise e
 
     tool_calls_list = [collected_tool_calls[i] for i in sorted(collected_tool_calls.keys())]

@@ -89,10 +89,17 @@ SILENT_TOOLS = {
 
 class Agent:
     def __init__(self, client: OpenAI, model: str):
-        self.client  = client
-        self.model   = model
-        self.turn    = 0
+        self.client    = client
+        self.model     = model
+        self.turn      = 0
+        self._timeline = []
         self.reset_messages()
+
+    def _log(self, event: str):
+        self._timeline.append({
+            "time":  datetime.now().strftime("%H:%M:%S"),
+            "event": event
+        })
 
     def reset_messages(self):
         user_mem = read_memory()
@@ -108,6 +115,7 @@ class Agent:
 
     def run(self, user_input: str):
         self.turn += 1
+        self._log(f"Task: {user_input[:60]}")
         self.messages.append({"role": "user", "content": user_input})
         step_num = 0
         recent_errors = []   # track repeated errors
@@ -122,6 +130,7 @@ class Agent:
 
             if not tool_calls:
                 print_response(text)
+                self._log("Task complete")
                 livestream.set_done("Task complete")
                 break
 
@@ -136,7 +145,6 @@ class Agent:
                 if name not in SILENT_TOOLS:
                     step_num += 1
                     livestream.update(name, args, step=step_num)
-                    livestream.print_bar()
                     key_arg = next(iter(args.values()), "") if args else ""
                     preview = repr(key_arg)[:70] if isinstance(key_arg, str) else ""
                     console.print(

@@ -60,6 +60,15 @@ API built and tested. Run: uvicorn main:app --reload
 
 ---
 
+## What's New in v1.4.0
+
+- **`/history`** — session timeline with timestamps
+- **`/init`** — initialize ARIA in any existing project
+- **`/tokens`** — estimated token usage in current session
+- **English-only responses** — consistent output regardless of input language
+- **External env detection** — Colab/server errors get code fixes, not local execution
+- **Livestream bar fix** — no more repeated text during streaming
+
 ## What's New in v1.3.0
 
 - **Live Stream Bar** — real-time status ticker during execution (`◉ Writing auth.py... step 3`)

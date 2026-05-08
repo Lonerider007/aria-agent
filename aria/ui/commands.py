@@ -19,6 +19,8 @@ COMMANDS = {
     "/commit":    "Stage and commit current changes with smart message",
     "/review":    "Review current code for issues and improvements",
     "/status":    "Session info",
+    "/history":   "Show session timeline with timestamps",
+    "/init":      "Initialize ARIA in an existing project",
     "/clear":     "Clear conversation history",
     "/reset":     "Full reset + workspace reload",
     "/model":     "Switch model  (/model name)",
@@ -27,6 +29,7 @@ COMMANDS = {
     "/projects":  "List all ARIA projects",
     "/memory":    "Show memory  (/memory project-name)",
     "/tools":     "List agent tools",
+    "/tokens":    "Show token usage this session",
     "/exit":      "Exit ARIA",
 }
 
@@ -55,6 +58,43 @@ def handle(inp: str, agent, state: dict) -> bool:
 
     elif cmd == "/review":
         agent.run("Review the current codebase. Check for: bugs, security issues, bad practices, missing error handling, and improvement opportunities. Be specific and actionable.")
+
+    elif cmd == "/history":
+        if not hasattr(agent, '_timeline') or not agent._timeline:
+            console.print("[aria.dim]No history yet.[/aria.dim]")
+        else:
+            console.print()
+            for entry in agent._timeline:
+                console.print(f"  [aria.dim]{entry['time']}[/aria.dim]  [aria.cyan]{entry['event']}[/aria.cyan]")
+
+    elif cmd == "/tokens":
+        total = sum(len(str(m.get("content", ""))) // 4 for m in agent.messages)
+        console.print(f"  [aria.dim]Estimated tokens in context:[/aria.dim] [aria.cyan]~{total:,}[/aria.cyan]")
+
+    elif cmd == "/init":
+        ws = arg or os.getcwd()
+        ws = str(Path(ws).expanduser().resolve())
+        if not Path(ws).exists():
+            console.print(f"[aria.error]Not found:[/aria.error] {ws}")
+        else:
+            import subprocess, json
+            from aria.memory.store import MEMORY_DIR, project_dir
+            name = Path(ws).name
+            pd = project_dir(name)
+            meta = {"name": name, "path": ws, "status": "in_progress",
+                    "stack": "existing", "description": "Initialized by aria init",
+                    "created_at": datetime.now().isoformat()}
+            (pd / "meta.json").write_text(json.dumps(meta, indent=2))
+            (pd / "memory.json").write_text("{}")
+            (pd / "progress.md").write_text(f"# {name} — Progress\n\n")
+            gitignore = Path(ws) / ".gitignore"
+            if gitignore.exists():
+                content = gitignore.read_text()
+                if ".aria/" not in content:
+                    gitignore.write_text(content + "\n.aria/\n")
+            os.chdir(ws)
+            state["workspace"] = ws
+            console.print(f"[aria.success]✓[/aria.success] ARIA initialized in [aria.cyan]{ws}[/aria.cyan]")
 
     elif cmd == "/help":
         t = Table(box=box.SIMPLE, show_header=True, header_style="aria.primary")

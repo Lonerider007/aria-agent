@@ -66,7 +66,7 @@ class WebSession:
             "type": "connected",
             "model": model,
             "workspace": workspace,
-            "version": "1.4.2",
+            "version": "1.4.3",
         })
 
         agent_running = False

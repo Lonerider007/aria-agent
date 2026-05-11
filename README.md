@@ -11,6 +11,25 @@ ARIA is an open-source CLI agent that works inside your project boundaries like 
 
 ![ARIA Demo](aria-demo.gif)
 
+## Benchmark — ARIA vs Aider
+
+Tested on: autonomous production backend build (Node.js + Express + SQLite + JWT + RBAC)
+
+| Capability | ARIA | Aider |
+|---|---|---|
+| Runtime grounding | Excellent | Weak |
+| Autonomous debugging | Excellent | Poor |
+| Recovery behavior | Excellent | Poor |
+| Runtime validation | Successful | Incomplete |
+| Convergence stability | Strong | Fragile |
+| Production readiness | Near-complete | Incomplete |
+
+**Verdict:** ARIA completed the full backend autonomously. Aider got stuck in edit-format desynchronization loops before reaching runtime execution.
+
+> *Tested on nemotron-3-super:cloud. Both agents given identical task from scratch.*
+
+---
+
 ## Install
 
 ```bash

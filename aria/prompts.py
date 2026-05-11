@@ -106,6 +106,18 @@ All packages go inside the project's .venv only.
 - Avoid SQLModel — use SQLAlchemy directly
 - Check Python version first: python --version
 
+## CPRS — Context and Checkpoint Pass Over Relay System
+You have a context budget. When you receive a "CPRS ALERT" message, immediately call save_checkpoint before continuing.
+When you receive a "CPRS RELAY" message at session start, you have a saved checkpoint — resume from next_step when user asks to continue.
+After a task is fully complete, call clear_checkpoint to remove stale checkpoints.
+save_checkpoint fields:
+- project: folder name of current workspace
+- task: one sentence describing the overall task
+- completed_steps: list of steps already done
+- next_step: exact next action (be specific — file path, command, what to fix)
+- key_paths: important file paths created or modified
+- summary: 2-3 sentence summary of current state
+
 ## Error handling
 - Command fails: read error, diagnose, fix, retry
 - Never fake success — if something doesn't work, say exactly why

@@ -34,6 +34,7 @@ from aria.tools.interaction import (
 )
 from aria.memory.store import save_memory, read_memory
 from aria.memory.context import load_project_context
+from aria.memory.checkpoint import save_checkpoint, load_checkpoint, clear_checkpoint
 
 TOOL_MAP = {
     "search_web":          search_web,
@@ -60,6 +61,9 @@ TOOL_MAP = {
     "save_memory":         save_memory,
     "read_memory":         read_memory,
     "load_project_context": load_project_context,
+    "save_checkpoint":     save_checkpoint,
+    "load_checkpoint":     load_checkpoint,
+    "clear_checkpoint":    clear_checkpoint,
 }
 
 TOOLS = [
@@ -87,6 +91,9 @@ TOOLS = [
     {"type":"function","function":{"name":"save_memory","description":"Persist a key fact or decision for future sessions.","parameters":{"type":"object","properties":{"key":{"type":"string"},"value":{"type":"string"},"project":{"type":"string"}},"required":["key","value"]}}},
     {"type":"function","function":{"name":"read_memory","description":"Load persisted memory from previous sessions.","parameters":{"type":"object","properties":{"project":{"type":"string"}},"required":[]}}},
     {"type":"function","function":{"name":"load_project_context","description":"Load full project memory, history, and context. Call at start of any project task.","parameters":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]}}},
+    {"type":"function","function":{"name":"save_checkpoint","description":"CPRS: Save current task state before context reset. Call when context is large (>18k tokens) or task will span multiple sessions.","parameters":{"type":"object","properties":{"project":{"type":"string"},"task":{"type":"string"},"completed_steps":{"type":"array","items":{"type":"string"}},"next_step":{"type":"string"},"key_paths":{"type":"array","items":{"type":"string"}},"summary":{"type":"string"}},"required":["project","task","completed_steps","next_step","key_paths","summary"]}}},
+    {"type":"function","function":{"name":"load_checkpoint","description":"CPRS: Load saved checkpoint from previous session to resume interrupted work.","parameters":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]}}},
+    {"type":"function","function":{"name":"clear_checkpoint","description":"CPRS: Clear checkpoint after task is fully complete.","parameters":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]}}},
 ]
 
 SILENT_TOOLS = {
@@ -134,6 +141,29 @@ class Agent:
                 user_memory=user_mem
             )
         }]
+        # CPRS: auto-inject checkpoint if one exists for current project
+        project = os.path.basename(os.getcwd())
+        from aria.memory.checkpoint import get_checkpoint_data
+        cp = get_checkpoint_data(project)
+        if cp:
+            self.messages.append({
+                "role": "user",
+                "content": (
+                    f"CPRS RELAY: A checkpoint exists from a previous session.\n"
+                    f"Project: {cp['project']}\n"
+                    f"Task: {cp['task']}\n"
+                    f"Completed: {', '.join(cp['completed_steps']) if cp['completed_steps'] else 'none'}\n"
+                    f"Next step: {cp['next_step']}\n"
+                    f"Key paths: {', '.join(cp['key_paths']) if cp['key_paths'] else 'none'}\n"
+                    f"Summary: {cp['summary']}\n"
+                    f"Saved at: {cp['saved_at']}\n\n"
+                    "Resume from this checkpoint when the user asks to continue."
+                )
+            })
+            console.print(
+                f"  [aria.cyan]◉ CPRS[/aria.cyan] [aria.dim]Checkpoint loaded — "
+                f"resuming '{cp['task'][:60]}'[/aria.dim]"
+            )
 
     def _trim_context(self, max_tokens: int = 28000):
         """Remove oldest non-system messages if context is too large."""
@@ -159,7 +189,24 @@ class Agent:
 
         # Warn if context still large after trim
         ctx_est = sum(len(str(m.get("content","")))//4 for m in self.messages)
-        if ctx_est > 20000:
+        _checkpoint_injected = False
+        if ctx_est > 18000 and not _checkpoint_injected:
+            _checkpoint_injected = True
+            console.print(
+                f"  [aria.warning]⚠[/aria.warning] [aria.dim]"
+                f"Context ~{ctx_est:,} tokens — CPRS checkpoint recommended.[/aria.dim]"
+            )
+            self.messages.append({
+                "role": "user",
+                "content": (
+                    f"CPRS ALERT: Context is ~{ctx_est:,} tokens. "
+                    "Before continuing, call save_checkpoint with: current project name, "
+                    "what task you are doing, what steps are completed, "
+                    "exact next step, key file paths, and a short summary. "
+                    "This ensures work can resume if context resets. Do it NOW before next action."
+                )
+            })
+        elif ctx_est > 20000:
             console.print(f"  [aria.warning]⚠[/aria.warning] [aria.dim]Context large (~{ctx_est:,} tokens). Use /clear to reset.[/aria.dim]")
 
         invalid_tool_retries = 0

@@ -218,7 +218,10 @@ class Agent:
                     "please let me know", "let me know", "if you'd like",
                     "if you want", "what specific", "what would you like",
                     "happy to help", "feel free", "i can help",
-                    "you can ask", "tell me what",
+                    "you can ask", "tell me what", "would you like me to",
+                    "would you like me", "shall i", "do you want me to",
+                    "is there something specific", "or is there",
+                    "which would you", "what would you prefer",
                 )
                 text_lower = (text or "").lower()
                 is_passive = (

@@ -226,6 +226,7 @@ class Agent:
                 text_lower = (text or "").lower()
                 is_passive = (
                     _desc_retries < 1
+                    and step_num == 0
                     and len(text or "") > 80
                     and any(sig in text_lower for sig in _PASSIVE_SIGNALS)
                 )

@@ -44,4 +44,7 @@ def start(host: str = "0.0.0.0", port: int = 7865, open_browser: bool = True):
     print(f"  Network: http://{ip}:{port}  ← open on phone\n")
     if open_browser:
         webbrowser.open(f"http://localhost:{port}")
-    uvicorn.run(app, host=host, port=port, log_level="warning")
+    uvicorn.run(
+        app, host=host, port=port, log_level="warning",
+        ws_ping_interval=None, ws_ping_timeout=None,
+    )

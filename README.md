@@ -60,6 +60,16 @@ API built and tested. Run: uvicorn main:app --reload
 
 ---
 
+## What's New in v1.4.3
+
+- **`aria web`** — access ARIA from any browser on your local network, including phone
+- **WebSocket streaming** — real-time token streaming in browser, same as terminal
+- **Plan approval in browser** — approve/reject plans via buttons, no terminal needed
+- **Mobile-first UI** — dark terminal theme, responsive, works on phone screen
+- **Session timeline** — live history panel in browser
+- **Auto-reconnect** — browser reconnects automatically if connection drops
+- **Install:** `pip install aria-x[web]` → `aria web`
+
 ## What's New in v1.4.2
 
 - **Personalized greeting** — ARIA shows your last session context on every startup

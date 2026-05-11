@@ -719,9 +719,9 @@ function connect() {
   };
 
   ws.onclose = () => {
-    setStatus('error', 'Disconnected — reload to reconnect');
+    setStatus('error', 'Reconnecting...');
     setSendEnabled(false);
-    setTimeout(connect, 3000);
+    setTimeout(connect, 2000);
   };
 
   ws.onerror = () => setStatus('error', 'Connection error');

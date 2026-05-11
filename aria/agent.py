@@ -93,13 +93,21 @@ SILENT_TOOLS = {
 
 
 class Agent:
-    def __init__(self, client: OpenAI, model: str, quiet: bool = False):
+    def __init__(self, client: OpenAI, model: str, quiet: bool = False, emit_cb=None):
         self.client    = client
         self.model     = model
         self.turn      = 0
         self.quiet     = quiet
+        self.emit_cb   = emit_cb
         self._timeline = []
         self.reset_messages()
+
+    def _emit(self, event: dict):
+        if self.emit_cb:
+            try:
+                self.emit_cb(event)
+            except Exception:
+                pass
 
     def _log(self, event: str):
         self._timeline.append({
@@ -154,9 +162,11 @@ class Agent:
 
         while step_num < MAX_STEPS:
             livestream.set_thinking()
+            self._emit({"type": "thinking"})
+            _on_token = (lambda t: self._emit({"type": "token", "text": t})) if self.emit_cb else None
             try:
                 msg_dict, tool_calls, text = stream_response(
-                    self.client, self.model, self.messages, TOOLS
+                    self.client, self.model, self.messages, TOOLS, on_token=_on_token
                 )
                 invalid_tool_retries = 0  # reset on success
             except RuntimeError as e:
@@ -213,6 +223,7 @@ class Agent:
                             f"  [aria.cyan]◉[/aria.cyan] [aria.dim]{phrase}[/aria.dim]",
                             end="\n"
                         )
+                    self._emit({"type": "tool", "name": name, "phrase": phrase, "step": step_num})
 
                 fn = TOOL_MAP.get(name)
                 try:
@@ -234,6 +245,7 @@ class Agent:
                 if name == "run_command" and result.strip():
                     for line in result.strip().splitlines()[:10]:
                         console.print(f"     [aria.dim]│ {line}[/aria.dim]")
+                    self._emit({"type": "tool_output", "text": result.strip()[:500], "step": step_num})
 
                 self.messages.append({
                     "role": "tool",

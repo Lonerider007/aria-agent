@@ -23,7 +23,7 @@ def _fmt_tokens(text: str) -> str:
     return str(est)
 
 
-def stream_response(client, model: str, messages: list, tools: list):
+def stream_response(client, model: str, messages: list, tools: list, on_token=None):
     """
     Stream response from model.
     Returns (final_message_dict, tool_calls_list, text_content)
@@ -70,6 +70,8 @@ def stream_response(client, model: str, messages: list, tools: list):
                 # Stream text content live
                 if delta.content:
                     collected_content += delta.content
+                    if on_token:
+                        on_token(delta.content)
                     preview = Text()
                     preview.append("\n  ◉ ", style="#7C3AED bold")
                     preview.append(collected_content[-300:], style="white")

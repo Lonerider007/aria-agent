@@ -87,6 +87,20 @@ def onboarding(args) -> tuple:
 
 
 def main():
+    # web subcommand — before argparse so it doesn't conflict
+    if len(sys.argv) > 1 and sys.argv[1] == "web":
+        try:
+            from aria.web.server import start as web_start
+        except ImportError:
+            print("ARIA Web requires: pip install aria-x[web]")
+            sys.exit(1)
+        port = 7865
+        for a in sys.argv[2:]:
+            if a.startswith("--port="):
+                port = int(a.split("=")[1])
+        web_start(port=port)
+        return
+
     parser = argparse.ArgumentParser(description="ARIA — Autonomous Reasoning and Intelligent Agent")
     parser.add_argument("--model",    default=get("default_model", "llama3.3"))
     parser.add_argument("--base-url", default=get("base_url", "http://localhost:11434/v1"))

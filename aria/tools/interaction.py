@@ -1,5 +1,8 @@
 import sys
+import threading
 from rich.prompt import Prompt
+
+_web_ctx = threading.local()  # holds .session when running in web mode
 
 try:
     import tty
@@ -48,9 +51,12 @@ def masked_input(prompt: str = "") -> str:
 
 
 def create_plan(steps, goal: str = "") -> str:
-    # Handle if model passes steps as a string instead of list
     if isinstance(steps, str):
         steps = [s.strip() for s in steps.split("\n") if s.strip()]
+
+    sess = getattr(_web_ctx, 'session', None)
+    if sess:
+        return sess.ask_plan(steps, goal)
 
     console.print()
     console.print(Rule("[aria.plan]◉ Plan[/aria.plan]", style="#7C3AED"))
@@ -72,12 +78,18 @@ def create_plan(steps, goal: str = "") -> str:
 
 
 def ask_clarification(question: str) -> str:
+    sess = getattr(_web_ctx, 'session', None)
+    if sess:
+        return sess.ask_question(question)
     console.print(f"\n  [aria.warning]?[/aria.warning] {question}")
     answer = Prompt.ask("  [aria.dim]Answer[/aria.dim]").strip()
     return answer or "(no answer)"
 
 
 def request_approval(action: str) -> str:
+    sess = getattr(_web_ctx, 'session', None)
+    if sess:
+        return sess.ask_approval(action)
     console.print(f"\n  [aria.warning]⚠[/aria.warning]  About to run:\n  [aria.dim]{action}[/aria.dim]\n")
     ans = Prompt.ask(
         "  [aria.dim][[/aria.dim][aria.success]y[/aria.success][aria.dim]] yes  [[/aria.dim][aria.error]n[/aria.error][aria.dim]] no[/aria.dim]",

@@ -197,4 +197,4 @@ Clarify → Plan → Approve → Execute → Validate → Remember → Report
 
 ## License
 
-MIT
+ARIA Source by Sumit @ samsungsumitv461@gmail.com

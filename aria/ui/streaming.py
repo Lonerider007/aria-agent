@@ -23,10 +23,11 @@ def _fmt_tokens(text: str) -> str:
     return str(est)
 
 
-def stream_response(client, model: str, messages: list, tools: list, on_token=None):
+def stream_response(client, model: str, messages: list, tools: list, on_token=None, timeout: int = 180):
     """
     Stream response from model.
     Returns (final_message_dict, tool_calls_list, text_content)
+    timeout: seconds before aborting a hung API call (default 3 min)
     """
     collected_content = ""
     collected_tool_calls = {}
@@ -45,6 +46,7 @@ def stream_response(client, model: str, messages: list, tools: list, on_token=No
                 tools=tools,
                 tool_choice="auto",
                 stream=True,
+                timeout=timeout,
             )
 
             for chunk in stream:
@@ -100,6 +102,8 @@ def stream_response(client, model: str, messages: list, tools: list, on_token=No
         except Exception as e:
             live.update(Text(""))
             err_str = str(e)
+            if "timed out" in err_str.lower() or "timeout" in err_str.lower() or "ReadTimeout" in err_str or "ConnectTimeout" in err_str:
+                raise RuntimeError("API_TIMEOUT") from e
             if "prompt too long" in err_str or "context length" in err_str:
                 raise RuntimeError("CONTEXT_TOO_LONG") from e
             if "invalid tool call" in err_str or ("invalid_request" in err_str and "tool" in err_str.lower()):

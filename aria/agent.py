@@ -153,8 +153,9 @@ class Agent:
         self.messages.append({"role": "user", "content": user_input})
         step_num = 0
         recent_errors = []
-        MAX_STEPS = 80
+        MAX_STEPS = 150
         self._pivot_count = 0  # reset per task
+        _desc_retries = 0
 
         # Warn if context still large after trim
         ctx_est = sum(len(str(m.get("content","")))//4 for m in self.messages)
@@ -188,6 +189,15 @@ class Agent:
                         "  [aria.dim]  • Upgrade at ollama.com/upgrade[/aria.dim]"
                     )
                     break
+                if "API_TIMEOUT" in str(e):
+                    console.print(
+                        "\n  [aria.error]◉[/aria.error] [aria.warning]API timed out (no response in 3 min).[/aria.warning]\n"
+                        "  [aria.dim]Check:[/aria.dim]\n"
+                        "  [aria.dim]  • Ollama running? → ollama serve[/aria.dim]\n"
+                        "  [aria.dim]  • API key valid? → aria --config[/aria.dim]\n"
+                        "  [aria.dim]  • Model available? → ollama list[/aria.dim]"
+                    )
+                    break
                 if "CONTEXT_TOO_LONG" in str(e):
                     console.print("\n  [aria.warning]⚠[/aria.warning] [aria.dim]Context too long. Use /clear to reset.[/aria.dim]")
                     break
@@ -202,6 +212,35 @@ class Agent:
             self.messages.append(msg_dict)
 
             if not tool_calls:
+                # Description-mode guard: ARIA returned text with passive/waiting phrases
+                # instead of calling create_plan or a tool. Re-prompt once to force action.
+                _PASSIVE_SIGNALS = (
+                    "please let me know", "let me know", "if you'd like",
+                    "if you want", "what specific", "what would you like",
+                    "happy to help", "feel free", "i can help",
+                    "you can ask", "tell me what",
+                )
+                text_lower = (text or "").lower()
+                is_passive = (
+                    _desc_retries < 1
+                    and len(text or "") > 80
+                    and any(sig in text_lower for sig in _PASSIVE_SIGNALS)
+                )
+                if is_passive:
+                    _desc_retries += 1
+                    console.print(
+                        "  [aria.warning]⚠[/aria.warning] [aria.dim]Passive response detected — forcing task mode.[/aria.dim]"
+                    )
+                    self.messages.append({
+                        "role": "user",
+                        "content": (
+                            "You responded with text instead of acting. This is wrong. "
+                            "You are an autonomous agent — you must ACT, not describe. "
+                            "Call create_plan NOW with the concrete steps to complete this task. "
+                            "Do NOT ask what I want — you already have the task. Just plan it."
+                        )
+                    })
+                    continue
                 print_response(text)
                 self._log("Task complete")
                 livestream.set_done("Task complete")

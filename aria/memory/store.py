@@ -35,3 +35,15 @@ def read_memory(project: str = None) -> str:
     if not data:
         return "(empty)"
     return "\n".join(f"{k}: {v['value']}" for k, v in data.items())
+
+
+def get_memory_value(key: str, project: str = None) -> str | None:
+    mem_file = (project_dir(project) if project else MEMORY_DIR) / "memory.json"
+    if not mem_file.exists():
+        return None
+    try:
+        data = json.loads(mem_file.read_text())
+        entry = data.get(key)
+        return entry["value"] if isinstance(entry, dict) else None
+    except (json.JSONDecodeError, OSError, KeyError):
+        return None

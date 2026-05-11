@@ -11,9 +11,9 @@ from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.styles import Style as PTStyle
 
 from aria.ui.console import console
-from aria.ui.banner import show_intro, show_tnc, show_banner, VERSION
+from aria.ui.banner import show_intro, show_tnc, show_banner, show_welcome_context, VERSION
 from aria.tools.interaction import masked_input
-from aria.memory.store import read_memory
+from aria.memory.store import read_memory, get_memory_value
 from aria.config import get, load_config, save_config, is_configured, mark_configured
 from aria.agent import Agent
 from aria.ui.commands import handle
@@ -118,6 +118,9 @@ def main():
     # Initialize frozen header with memory status
     init_frozen_header(model, workspace, VERSION, mem_status=mem_status)
     atexit.register(restore_terminal)
+
+    # Personalized greeting — show last task from memory
+    show_welcome_context(get_memory_value("last_session"))
 
     session = PromptSession(
         history=InMemoryHistory(),

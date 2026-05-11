@@ -11,6 +11,7 @@ from typing import Optional
 from .rules.type_rules   import check_type_annotations
 from .rules.import_rules import check_imports
 from .rules.compat       import check_compat
+from .rules.removed_nodes import check_removed_nodes
 from .reporter           import format_issues, format_for_llm
 
 
@@ -51,6 +52,7 @@ class ASTValidator:
         issues += check_type_annotations(tree, self.python_version)
         issues += check_imports(tree)
         issues += check_compat(tree, self.python_version)
+        issues += check_removed_nodes(tree)
 
         return ValidationResult(
             valid=len(issues) == 0,

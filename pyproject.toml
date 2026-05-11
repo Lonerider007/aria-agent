@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aria-x"
-version = "1.4.1"
+version = "1.4.2"
 description = "ARIA — Autonomous Reasoning and Intelligent Agent. Your project-aware coding partner."
 authors = [{name = "Sumit", email = "samsungsumitv461@gmail.com"}]
 readme = "README.md"
@@ -19,10 +19,10 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
-    "openai>=1.0.0",
-    "rich>=13.0.0",
-    "prompt_toolkit>=3.0.0",
-    "ddgs>=6.0.0",
+    "openai>=1.102.0",
+    "rich>=14.1.0",
+    "prompt_toolkit>=3.0.50",
+    "ddgs>=9.14.2",
 ]
 
 [project.scripts]

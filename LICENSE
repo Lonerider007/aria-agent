@@ -1,0 +1,41 @@
+ARIA SOURCE LICENSE
+Version 1.0 — 2026
+
+Copyright © 2026 Sumit (Lonerider007). All rights reserved.
+
+ARIA — Autonomous Reasoning and Intelligent Agent
+Created by Sumit | GitHub: https://github.com/Lonerider007
+
+GRANT OF RIGHTS
+Permission is granted, free of charge, to any person obtaining a copy of this
+software to use, run, and modify ARIA for personal, educational, and internal
+business purposes, subject to the following conditions:
+
+RESTRICTIONS
+The following are NOT permitted without explicit written permission from the author:
+
+1. Commercial redistribution — You may not sell, sublicense, or distribute ARIA
+   or any derivative work as a standalone product or service.
+
+2. Competing products — You may not use ARIA's source code, architecture, or
+   core algorithms (AST → Intent → Attention → RAG → Validated Output) to build
+   a competing CLI agent product.
+
+3. Rebranding — You may not remove or alter copyright notices, rebrand ARIA, or
+   present it as your own original work.
+
+ATTRIBUTION
+Any permitted use, modification, or distribution must retain this copyright
+notice and credit: "Based on ARIA by Sumit (github.com/Lonerider007/aria-agent)"
+
+CORE INTELLECTUAL PROPERTY
+The formula: AST(code) → Intent Classification → Contextual Attention →
+RAG Retrieval → Validated Output is the original intellectual property of Sumit,
+first documented 2026-05-08. All rights reserved.
+
+DISCLAIMER
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. THE AUTHOR
+SHALL NOT BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM
+THE USE OF THIS SOFTWARE.
+
+For licensing inquiries: samsungsumitv461@gmail.com

@@ -8,7 +8,7 @@ version = "1.4.4"
 description = "ARIA — Autonomous Reasoning and Intelligent Agent. Your project-aware coding partner."
 authors = [{name = "Sumit", email = "samsungsumitv461@gmail.com"}]
 readme = "README.md"
-license = "MIT"
+license = "LicenseRef-ARIA-Source-License"
 requires-python = ">=3.10"
 keywords = ["ai", "agent", "cli", "coding", "llm", "ollama"]
 classifiers = [

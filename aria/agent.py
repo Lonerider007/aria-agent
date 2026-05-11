@@ -1,3 +1,6 @@
+# Copyright © 2026 Sumit (Lonerider007). All rights reserved.
+# ARIA — Autonomous Reasoning and Intelligent Agent
+# License: ARIA Source License v1.0 — see LICENSE file
 import os
 import json
 from datetime import datetime

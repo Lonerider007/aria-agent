@@ -60,17 +60,29 @@ API built and tested. Run: uvicorn main:app --reload
 
 ---
 
+## What's New in v1.4.2
+
+- **Personalized greeting** — ARIA shows your last session context on every startup
+- **Python 3.14 AST compatibility** — detects removed node types (`ast.Str`, `ast.Bytes`, `ast.Num`, `ast.NameConstant`) before execution
+- **Test suite** — 9 unit tests for AST validator, all passing
+- **Updated dependencies** — latest floors for openai, rich, prompt_toolkit, ddgs
+
+## What's New in v1.4.1
+
+- **Sandbox mode** — isolated workspace for experiments (`/sandbox`)
+- **Web search** — `search_web` tool searches DuckDuckGo in real time
+- **8 security & stability bugs fixed** — code audit pass
+- **Rate limit & 500 error handling** — clean messages, auto-retry
+
 ## What's New in v1.4.0
 
 - **Humanized tool display** — `◉ Writing auth.py...` instead of raw tool names
 - **Persistent token counter** — bottom bar shows `↑ 1.2k tokens · 3 turns · 2m 30s`
 - **Internet access** — `search_web` tool for real-time information
 - **Config system** — first run saves settings, next run is instant
-- **Rate limit & 500 error handling** — clean messages, auto-retry
 - **`/history`, `/init`, `/tokens`** — new slash commands
 - **`--quiet` mode** — hide tool details, show only final report
 - **Context auto-trim** — prevents context overflow crashes
-- **Bulk operation fix** — uses `rm -rf` for bulk deletions
 - **English-only responses** — consistent regardless of input language
 - **Frozen header** — ARIA info stays visible at startup
 

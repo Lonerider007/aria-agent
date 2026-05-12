@@ -106,6 +106,14 @@ All packages go inside the project's .venv only.
 - Avoid SQLModel — use SQLAlchemy directly
 - Check Python version first: python --version
 
+## Pydantic V2 patterns (CRITICAL)
+- Use `model_config = ConfigDict(from_attributes=True)` NOT `class Config: orm_mode = True`
+- Use `model_validate(obj)` NOT `from_orm(obj)`
+- Use `model_dump()` NOT `dict()`
+- Use `model_json_schema()` NOT `schema()`
+- Import: `from pydantic import BaseModel, ConfigDict, Field`
+- Never use `orm_mode = True` — it was removed in Pydantic V2
+
 ## CPRS — Context and Checkpoint Pass Over Relay System
 You have a context budget. When you receive a "CPRS ALERT" message, immediately call save_checkpoint before continuing.
 When you receive a "CPRS RELAY" message at session start, you have a saved checkpoint — resume from next_step when user asks to continue.

@@ -74,6 +74,13 @@ def create_plan(steps, goal: str = "") -> str:
     if ans in ("modify", "m"):
         feedback = Prompt.ask("[aria.warning]Your changes[/aria.warning]").strip()
         return f"USER_MODIFIED: revise plan — {feedback}"
+    # Mark plan as shown in CPRS checkpoint if one exists
+    try:
+        import os
+        from aria.memory.checkpoint import mark_plan_shown
+        mark_plan_shown(os.path.basename(os.getcwd()))
+    except Exception:
+        pass
     return "APPROVED"
 
 

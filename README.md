@@ -33,14 +33,25 @@ Tested on: autonomous production backend build (Node.js + Express + SQLite + JWT
 ## Install
 
 ```bash
-pip install aria-x
+pipx install aria-x
 ```
+
+> **Note:** Use `pipx` (not `pip`) on Ubuntu/Debian/macOS. `pip install` will fail with "externally-managed-environment" error on modern systems.
+> If pipx is not installed: `pip install pipx --break-system-packages`
 
 ```bash
 aria --model nemotron-3-super:cloud
 ```
 
 Requirements: Python 3.10+, [Ollama](https://ollama.com)
+
+### Minimum Model Requirements
+
+| Use case | Minimum model |
+|----------|--------------|
+| Local (free) | `qwen2.5-coder:7b` or `llama3.2:8b` — **minimum 7B params** |
+| Cloud (recommended) | `nemotron-3-super:cloud` via Ollama |
+| Not supported | Models under 7B (3B models cannot tool-call reliably) |
 
 ---
 

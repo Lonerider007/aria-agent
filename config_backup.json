@@ -1,0 +1,11 @@
+{
+  "default_model": "nemotron-3-super:cloud",
+  "base_url": "http://localhost:11434/v1",
+  "api_key": "39dc3d0db2a5458d9aa84f1a9efcb8ee.4JsCgzSDq-Aup1vHj6apwBLf",
+  "theme": "purple",
+  "stream": true,
+  "max_retries": 3,
+  "auto_approve": false,
+  "tnc_agreed": true,
+  "workspace": "/home/sumit/projects/stress-test-api"
+}

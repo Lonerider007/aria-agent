@@ -1,10 +1,13 @@
 import json
 import time
+import threading
 from rich.live import Live
 from rich.text import Text
 from rich.markdown import Markdown
 from rich.rule import Rule
 from .console import console
+
+_CHUNK_TIMEOUT = 45  # seconds — if no chunk arrives in 45s, abort stream
 
 # Pulse sequence — simulates zoom in/out
 PULSE = ["·", "◦", "○", "◉", "●", "◉", "○", "◦"]
@@ -49,7 +52,20 @@ def stream_response(client, model: str, messages: list, tools: list, on_token=No
                 timeout=timeout,
             )
 
+            _last_chunk = [time.time()]  # watchdog: reset on every chunk
+
+            def _watchdog():
+                while True:
+                    time.sleep(5)
+                    if time.time() - _last_chunk[0] > _CHUNK_TIMEOUT:
+                        stream.close()
+                        break
+
+            _wd = threading.Thread(target=_watchdog, daemon=True)
+            _wd.start()
+
             for chunk in stream:
+                _last_chunk[0] = time.time()  # reset watchdog
                 choice = chunk.choices[0] if chunk.choices else None
                 if not choice:
                     continue
@@ -102,7 +118,7 @@ def stream_response(client, model: str, messages: list, tools: list, on_token=No
         except Exception as e:
             live.update(Text(""))
             err_str = str(e)
-            if "timed out" in err_str.lower() or "timeout" in err_str.lower() or "ReadTimeout" in err_str or "ConnectTimeout" in err_str:
+            if "timed out" in err_str.lower() or "timeout" in err_str.lower() or "ReadTimeout" in err_str or "ConnectTimeout" in err_str or "StreamClosedError" in err_str or "closed" in err_str.lower():
                 raise RuntimeError("API_TIMEOUT") from e
             if "prompt too long" in err_str or "context length" in err_str:
                 raise RuntimeError("CONTEXT_TOO_LONG") from e

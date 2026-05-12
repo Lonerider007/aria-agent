@@ -16,6 +16,7 @@ def save_checkpoint(project: str, task: str, completed_steps: list,
         "key_paths": key_paths,
         "summary": summary,
         "saved_at": datetime.now().isoformat(),
+        "plan_shown": False,
     }
     path = CHECKPOINT_DIR / f"{project}.json"
     with open(path, "w") as f:
@@ -39,6 +40,16 @@ def load_checkpoint(project: str) -> str:
         f"Summary: {data['summary']}",
     ]
     return "\n".join(lines)
+
+
+def mark_plan_shown(project: str):
+    path = CHECKPOINT_DIR / f"{project}.json"
+    if path.exists():
+        with open(path, "r") as f:
+            data = json.load(f)
+        data["plan_shown"] = True
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
 
 
 def clear_checkpoint(project: str) -> str:

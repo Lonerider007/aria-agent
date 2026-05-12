@@ -34,7 +34,7 @@ from aria.tools.interaction import (
 )
 from aria.memory.store import save_memory, read_memory
 from aria.memory.context import load_project_context
-from aria.memory.checkpoint import save_checkpoint, load_checkpoint, clear_checkpoint
+from aria.memory.checkpoint import save_checkpoint, load_checkpoint, clear_checkpoint, mark_plan_shown, get_checkpoint_data
 
 TOOL_MAP = {
     "search_web":          search_web,
@@ -74,7 +74,7 @@ TOOLS = [
     {"type":"function","function":{"name":"delete_file","description":"Delete a file","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}},
     {"type":"function","function":{"name":"list_files","description":"List files in directory","parameters":{"type":"object","properties":{"path":{"type":"string"},"recursive":{"type":"boolean"}},"required":[]}}},
     {"type":"function","function":{"name":"search_in_files","description":"Search pattern in files (grep)","parameters":{"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string"},"file_pattern":{"type":"string"}},"required":["pattern"]}}},
-    {"type":"function","function":{"name":"run_command","description":"Run a shell command","parameters":{"type":"object","properties":{"command":{"type":"string"},"cwd":{"type":"string"}},"required":["command"]}}},
+    {"type":"function","function":{"name":"run_command","description":"Run a shell command. For servers/long processes use background=true to avoid timeout.","parameters":{"type":"object","properties":{"command":{"type":"string"},"cwd":{"type":"string"},"background":{"type":"boolean","description":"Run in background, no timeout. Use for servers, uvicorn, flask, etc."}},"required":["command"]}}},
     {"type":"function","function":{"name":"run_tests","description":"Run test suite","parameters":{"type":"object","properties":{"command":{"type":"string"},"cwd":{"type":"string"}},"required":[]}}},
     {"type":"function","function":{"name":"git_status","description":"Git working tree status","parameters":{"type":"object","properties":{"cwd":{"type":"string"},"path":{"type":"string"}},"required":[]}}},
     {"type":"function","function":{"name":"git_diff","description":"Show git diff","parameters":{"type":"object","properties":{"cwd":{"type":"string"},"path":{"type":"string"}},"required":[]}}},
@@ -146,6 +146,11 @@ class Agent:
         from aria.memory.checkpoint import get_checkpoint_data
         cp = get_checkpoint_data(project)
         if cp:
+            plan_note = (
+                " Plan has already been shown and approved — do NOT show the same plan again. Resume execution directly from next_step."
+                if cp.get("plan_shown") else
+                " When user asks to continue, show a plan and ask for approval before executing."
+            )
             self.messages.append({
                 "role": "user",
                 "content": (
@@ -157,7 +162,7 @@ class Agent:
                     f"Key paths: {', '.join(cp['key_paths']) if cp['key_paths'] else 'none'}\n"
                     f"Summary: {cp['summary']}\n"
                     f"Saved at: {cp['saved_at']}\n\n"
-                    "Resume from this checkpoint when the user asks to continue."
+                    f"{plan_note}"
                 )
             })
             console.print(

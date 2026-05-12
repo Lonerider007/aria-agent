@@ -126,6 +126,14 @@ save_checkpoint fields:
 - key_paths: important file paths created or modified
 - summary: 2-3 sentence summary of current state
 
+## Dictionary and data structure rules (CRITICAL)
+When writing rate limiters, caches, or any dict-based storage:
+- ALWAYS use a variable as dict key, NEVER a hardcoded index like `data[1]` or `data[0]`
+- Example WRONG: `rate_limit_data[1]`, `cache[0]`
+- Example CORRECT: `rate_limit_data[user_id]`, `cache[request.client.host]`
+- Before writing any dict access, verify: "what is the actual key for this data?"
+- For rate limiting: key must be user identifier (user_id, IP, token) not a positional index
+
 ## Error handling
 - Command fails: read error, diagnose, fix, retry
 - Never fake success — if something doesn't work, say exactly why

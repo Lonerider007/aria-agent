@@ -124,7 +124,10 @@ def stream_response(client, model: str, messages: list, tools: list, on_token=No
             raise RuntimeError("INVALID_TOOL_ARGS") from err
         if "429" in err_str or "rate limit" in err_str.lower() or "usage limit" in err_str.lower():
             raise RuntimeError("RATE_LIMIT") from err
-        if "500" in err_str or "internal service error" in err_str.lower() or "InternalServerError" in err_str:
+        if ("500" in err_str or "502" in err_str or "503" in err_str or
+                "internal service error" in err_str.lower() or
+                "InternalServerError" in type(err).__name__ or
+                "unexpected EOF" in err_str or "Bad Gateway" in err_str):
             raise RuntimeError("SERVER_ERROR") from err
         raise err
 

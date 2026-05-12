@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aria-x"
-version = "1.5.1"
+version = "1.5.2"
 description = "ARIA — Autonomous Reasoning and Intelligent Agent. Your project-aware coding partner."
 authors = [{name = "Sumit", email = "samsungsumitv461@gmail.com"}]
 readme = "README.md"

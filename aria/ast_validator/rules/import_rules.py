@@ -3,7 +3,9 @@ Import validation rules.
 """
 import ast
 import importlib.util
-from typing import List
+import os
+from pathlib import Path
+from typing import List, Optional
 
 
 class ImportIssue:
@@ -30,20 +32,51 @@ KNOWN_RENAMES = {
 }
 
 
-def check_imports(tree: ast.AST) -> List[ImportIssue]:
+def _get_project_venv_packages(filepath: str = "") -> Optional[set]:
+    """Find project .venv and return installed package names."""
+    search_dirs = []
+    if filepath:
+        search_dirs.append(Path(filepath).parent)
+    search_dirs.append(Path(os.getcwd()))
+
+    for base in search_dirs:
+        for venv_name in (".venv", "venv", "env"):
+            venv = base / venv_name
+            if not venv.exists():
+                # Walk up to find venv
+                for parent in base.parents:
+                    venv = parent / venv_name
+                    if venv.exists():
+                        break
+                else:
+                    continue
+            # Find site-packages
+            site_pkgs = list(venv.glob("lib/python*/site-packages"))
+            if site_pkgs:
+                pkgs = set()
+                for sp in site_pkgs:
+                    for item in sp.iterdir():
+                        name = item.name.split("-")[0].split(".")[0].lower()
+                        pkgs.add(name)
+                return pkgs
+    return None
+
+
+def check_imports(tree: ast.AST, filepath: str = "") -> List[ImportIssue]:
+    project_pkgs = _get_project_venv_packages(filepath)
     issues = []
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                issue = _check_module(alias.name, node.lineno)
+                issue = _check_module(alias.name, node.lineno, project_pkgs)
                 if issue:
                     issues.append(issue)
 
         if isinstance(node, ast.ImportFrom):
             if node.module:
                 root = node.module.split(".")[0]
-                issue = _check_module(root, node.lineno)
+                issue = _check_module(root, node.lineno, project_pkgs)
                 if issue:
                     issues.append(issue)
 
@@ -64,7 +97,7 @@ LOCAL_MODULE_PATTERNS = {
 }
 
 
-def _check_module(module_name: str, line: int):
+def _check_module(module_name: str, line: int, project_pkgs: Optional[set] = None):
     root = module_name.split(".")[0]
 
     # Skip local/project modules — not pip packages
@@ -86,9 +119,26 @@ def _check_module(module_name: str, line: int):
             fix=f"pip install {pip_name}"
         )
 
-    # Check if module can be found — only for known third-party style names
+    # Skip stdlib modules
+    if _is_stdlib(root):
+        return None
+
+    # Check project venv first — if found there, no issue
+    if project_pkgs is not None:
+        if root.lower() in project_pkgs:
+            return None
+        # Not in project venv — report missing
+        return ImportIssue(
+            line=line,
+            code="IMP002",
+            module=root,
+            message=f"Module '{root}' not found in project venv",
+            fix=f".venv/bin/pip install {root}"
+        )
+
+    # Fallback — check ARIA's own interpreter (less accurate)
     spec = importlib.util.find_spec(root)
-    if spec is None and not _is_stdlib(root):
+    if spec is None:
         return ImportIssue(
             line=line,
             code="IMP002",

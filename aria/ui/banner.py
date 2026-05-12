@@ -3,7 +3,7 @@ from rich.text import Text
 from rich.align import Align
 from .console import console
 
-VERSION = "1.5.3"
+VERSION = "1.5.4"
 
 LOGO = """[aria.primary]
     ◉  A R I A[/aria.primary]

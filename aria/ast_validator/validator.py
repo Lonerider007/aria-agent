@@ -50,7 +50,7 @@ class ASTValidator:
         # Run all rule sets
         issues = []
         issues += check_type_annotations(tree, self.python_version)
-        issues += check_imports(tree)
+        issues += check_imports(tree, filepath=filepath)
         issues += check_compat(tree, self.python_version)
         issues += check_removed_nodes(tree)
 

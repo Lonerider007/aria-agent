@@ -3,8 +3,8 @@ from pathlib import Path
 from datetime import datetime
 
 MEMORY_DIR = Path.home() / ".aria"
-MEMORY_DIR.mkdir(exist_ok=True)
-(MEMORY_DIR / "projects").mkdir(exist_ok=True)
+MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+(MEMORY_DIR / "projects").mkdir(parents=True, exist_ok=True)
 
 
 def project_dir(name: str) -> Path:

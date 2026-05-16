@@ -2,6 +2,13 @@
 
 All notable changes to ARIA.
 
+## [1.6.1] — 2026-05-16 — Patch release
+
+### Fixed
+- `aria --reset` flag added to argparse (G3 fix was incomplete in 1.6.0 — the sys.argv check existed but argparse didn't register `--reset`, causing "unrecognized arguments" error).
+- `aria --version` flag added — prints version and exits.
+- `RuntimeValidator.check_completion_claim` no longer flags `STATE_ERROR` (FSM procedural blocks) or `WARN_*` advisories as "real failures". Previously caused 3x REJECTED_COMPLETION_CLAIM loops on tasks where the LLM made an early FSM-blocked attempt that was then properly retried via plan.
+
 ## [1.6.0] — 2026-05-16 — The Comeback Release
 
 **Tagline:** *"Agent that writes code AND proves it works — verified end-to-end."*

@@ -86,11 +86,14 @@ class RuntimeValidator:
         completion_signals = ("task complete", "done.", "successfully", "completed.", "ready to run", "all set")
         if not any(s in text for s in completion_signals):
             return None
-        # Check last few tool results for errors
+        # Check last few tool results for REAL errors.
+        # Skip procedural blocks (STATE_ERROR from FSM, soft advisory warnings).
         for r in recent_tool_results[-4:]:
             if not r:
                 continue
             r_str = str(r)
+            if r_str.startswith("STATE_ERROR") or r_str.startswith("WARN_") or r_str.startswith("[DEDUP:"):
+                continue
             if "Traceback" in r_str or "ERROR" in r_str or "BLOCKED:" in r_str or "VERIFY_FAILED" in r_str or "ACCEPTANCE_FAILED" in r_str:
                 return (
                     "REJECTED_COMPLETION_CLAIM: you said the task is complete, but one of the recent "

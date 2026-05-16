@@ -109,7 +109,12 @@ def main():
     parser.add_argument("--base-url", default=get("base_url", "http://localhost:11434/v1"))
     parser.add_argument("--api-key",  default=get("api_key", ""))
     parser.add_argument("--quiet",    action="store_true", help="Hide tool execution details")
+    parser.add_argument("--reset",    action="store_true", help="Force re-onboarding (TnC, workspace, model prompts)")
+    parser.add_argument("--version",  action="store_true", help="Show ARIA version and exit")
     args = parser.parse_args()
+    if args.version:
+        print(f"ARIA {VERSION}")
+        return
 
     api_key, workspace, model = onboarding(args)
 

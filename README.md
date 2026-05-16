@@ -90,6 +90,52 @@ API built and tested. Run: uvicorn main:app --reload
 
 ---
 
+## What's New in v1.6.0 — The Comeback Release
+
+**"Agent that writes code AND proves it works — verified end-to-end."**
+
+Most coding agents (Aider, Cursor, even Claude Code) mark tasks done on structural
+completion. ARIA v1.6 enforces three gates at the **code level** — before any task
+is marked done:
+
+1. **`fetch_api_spec`** — for any HTTP integration, the real API docs must be fetched first. No more hardcoded params from training-era memory.
+2. **`verify_goal`** — concrete evidence (files exist, commands exited 0, expected output present) must back every completion claim.
+3. **`acceptance_test`** — a small runnable script proves the goal works end-to-end before "done".
+
+If ARIA says it works, **it actually works.**
+
+### Architecture upgrades (all code-level, not prompt rules)
+
+- **Mode router** — conversational vs task classification at the input layer; skips tool schema entirely for greetings/questions (saves ~600 tokens/turn).
+- **Plan/Approval FSM** — mutating tools (write/edit/run) blocked at runtime until plan is approved. Bypass-proof.
+- **Delta context memory** — duplicate tool outputs replaced with short references; long sessions stay flat in tokens.
+- **Adaptive recall** — TF-IDF + relation-graph proximity; old irrelevant messages pruned first when over budget, not FIFO.
+- **Tool guards** — bare `pip install`, `rm -rf /`, multiple `delete_file`/turn, HTTP code without spec — all blocked deterministically.
+- **Loop guard** — error fingerprints; 3 identical errors → automatic pivot; 2 failed pivots → honest "I can't" report.
+- **Runtime validator** — hallucinated file paths blocked; "task complete" claims rejected when recent results contain errors; stale-belief catch when the same factual claim repeats across 3+ turns.
+- **Time awareness** — system prompt refreshed every turn with real wall-clock; LLM forbidden to quote versions from training memory without `search_web`.
+- **Relation graph** — SQLite at `~/.aria/relations.db` recording file edits, project switches, verified tasks. Foundation for semantic recall.
+
+### New commands
+
+- `/undo` — reverses the most recent `write_file`/`edit_file`/`delete_file`. `/undo list` shows recent mutations.
+
+### Bug fixes
+
+- `git_commit` shell injection (subprocess list form now)
+- `git_create_branch` rejects unsafe branch names
+- Web bridge no longer hardcodes stale version string
+- Onboarding fast-path no longer re-triggers full TnC on saved configs
+- `list_files` recursive: caps at 500 entries, skips `.git/node_modules/__pycache__/.venv/...`
+- `read_file`, `search_in_files`: output capped at 16KB
+- `/clear` now also resets the FSM, loop guard, and validator state
+
+### Prompt economy
+
+- System prompt: **153 lines → 77 lines**. Behaviors that used to be prompt rules ("never run bare pip install", "use Pydantic V2") are now enforced in code.
+
+---
+
 ## What's New in v1.4.3
 
 - **`aria web`** — access ARIA from any browser on your local network, including phone
@@ -156,6 +202,7 @@ API built and tested. Run: uvicorn main:app --reload
 | `/model <name>` | Switch model |
 | `/memory` | Show project memory |
 | `/projects` | List all ARIA projects |
+| `/undo` | Undo last file write/edit/delete (`/undo list` to view) |
 | `/exit` | Exit |
 
 ---

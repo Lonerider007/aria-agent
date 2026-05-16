@@ -47,3 +47,28 @@ def get_memory_value(key: str, project: str = None) -> str | None:
         return entry["value"] if isinstance(entry, dict) else None
     except (json.JSONDecodeError, OSError, KeyError):
         return None
+
+
+def read_user_facts() -> str:
+    """Return a compact, prompt-ready summary of stable user-identity facts.
+
+    Pulls keys prefixed with `user_` (e.g., user_name, user_role) from the
+    top-level memory.json. Excludes ephemeral keys like `last_session`.
+    """
+    mem_file = MEMORY_DIR / "memory.json"
+    if not mem_file.exists():
+        return ""
+    try:
+        data = json.loads(mem_file.read_text())
+    except (json.JSONDecodeError, OSError):
+        return ""
+    facts = []
+    for k, v in data.items():
+        if not isinstance(v, dict):
+            continue
+        val = v.get("value")
+        if not val:
+            continue
+        if k.startswith("user_") or k in {"name", "role", "company"}:
+            facts.append(f"{k.replace('user_', '').replace('_', ' ')}: {val}")
+    return "; ".join(facts) if facts else ""

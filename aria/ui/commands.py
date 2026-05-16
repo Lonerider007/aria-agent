@@ -31,6 +31,8 @@ COMMANDS = {
     "/tools":     "List agent tools",
     "/tokens":    "Show token usage this session",
     "/sandbox":   "Create or switch to sandbox workspace  (/sandbox new <name>)",
+    "/undo":      "Undo last file write/edit/delete (/undo list to view recent)",
+    "/whatsnew":  "Show what changed in this version of ARIA",
     "/exit":      "Exit ARIA",
 }
 
@@ -143,6 +145,10 @@ def handle(inp: str, agent, state: dict) -> bool:
     elif cmd == "/clear":
         agent.reset_messages()
         agent.turn = 0
+        if hasattr(agent, "fsm"):        agent.fsm.reset()
+        if hasattr(agent, "loop_guard"): agent.loop_guard.reset()
+        if hasattr(agent, "validator"):  agent.validator.reset()
+        if hasattr(agent, "budget"):     agent.budget._cache.clear()
         console.print("[aria.success]✓[/aria.success] Cleared.")
 
     elif cmd == "/reset":
@@ -199,6 +205,47 @@ def handle(inp: str, agent, state: dict) -> bool:
             fn = tool["function"]
             t.add_row(fn["name"], fn["description"][:65])
         console.print(t)
+
+    elif cmd == "/whatsnew":
+        from aria.ui.banner import VERSION
+        console.print(f"\n  [aria.primary]◉ ARIA v{VERSION} — The Comeback Release[/aria.primary]\n")
+        console.print(
+            "  [aria.cyan]Verified end-to-end:[/aria.cyan] every task now passes three gates before 'done' —\n"
+            "    1. [aria.warning]fetch_api_spec[/aria.warning] — read API docs before integration\n"
+            "    2. [aria.warning]verify_goal[/aria.warning]    — evidence (files/commands/output) backs every claim\n"
+            "    3. [aria.warning]acceptance_test[/aria.warning] — runnable proof script must pass\n"
+        )
+        console.print(
+            "  [aria.cyan]Architecture:[/aria.cyan]\n"
+            "    • Mode router (conversational vs task)\n"
+            "    • Plan/Approval FSM (mutating tools blocked until APPROVED)\n"
+            "    • Tool guards (no bare pip, no rm -rf /, etc.)\n"
+            "    • Delta context + TF-IDF recall + relation graph\n"
+            "    • Runtime validator (hallucination, no-go list, stale-belief)\n"
+            "    • Time awareness (live wall-clock each turn)\n"
+            "    • Identity memory (auto-captures your name/role)\n"
+        )
+        console.print(
+            "  [aria.cyan]New commands:[/aria.cyan] [aria.warning]/undo[/aria.warning], [aria.warning]/whatsnew[/aria.warning]\n"
+            "  [aria.cyan]Prompt size:[/aria.cyan] 153 → 77 lines (behaviors moved to code)\n"
+        )
+
+    elif cmd == "/undo":
+        from aria.tools.undo_log import undo_last, list_entries
+        if arg.strip() == "list":
+            entries = list_entries(limit=15)
+            if not entries:
+                console.print("[aria.dim](no undo entries)[/aria.dim]")
+            else:
+                for e in entries:
+                    ts = datetime.fromtimestamp(e.get("ts", 0)).strftime("%H:%M:%S")
+                    console.print(f"  [aria.dim]{ts}[/aria.dim]  [aria.warning]{e.get('action','?'):6}[/aria.warning]  {e.get('path','')}")
+        else:
+            msg = undo_last()
+            if msg.startswith(("Restored","Removed","SKIPPED")):
+                console.print(f"[aria.success]✓[/aria.success] {msg}")
+            else:
+                console.print(f"[aria.dim]{msg}[/aria.dim]")
 
     elif cmd in ("/exit", "/quit"):
         console.print("[aria.dim]Goodbye.[/aria.dim]")

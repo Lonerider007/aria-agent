@@ -62,11 +62,12 @@ class WebSession:
 
         _interaction._web_ctx.session = self
 
+        from aria.ui.banner import VERSION
         await ws.send_json({
             "type": "connected",
             "model": model,
             "workspace": workspace,
-            "version": "1.4.4",
+            "version": VERSION,
         })
 
         agent_running = False

@@ -16,6 +16,12 @@ from aria.rag import RAGRetriever
 from aria.ui import livestream
 from aria.ui.livestream import update_tokens
 from aria.ui.tool_phrases import get_phrase
+from aria.controllers.router import classify as classify_mode
+from aria.controllers.state_machine import PlanFSM, State
+from aria.controllers import tool_guard
+from aria.controllers.loop_guard import LoopGuard, PIVOT_MESSAGE, EXHAUSTED_MESSAGE
+from aria.context.budget import TokenBudget
+from aria.validator.runtime import RuntimeValidator
 
 _ast_validator = ASTValidator()
 _rag = RAGRetriever()
@@ -32,6 +38,9 @@ from aria.tools.interaction import (
     create_plan, ask_clarification,
     request_approval, notify_user
 )
+from aria.tools.verify import verify_goal
+from aria.tools.spec import fetch_api_spec
+from aria.tools.acceptance import acceptance_test
 from aria.memory.store import save_memory, read_memory
 from aria.memory.context import load_project_context
 from aria.memory.checkpoint import save_checkpoint, load_checkpoint, clear_checkpoint, mark_plan_shown, get_checkpoint_data
@@ -64,6 +73,9 @@ TOOL_MAP = {
     "save_checkpoint":     save_checkpoint,
     "load_checkpoint":     load_checkpoint,
     "clear_checkpoint":    clear_checkpoint,
+    "verify_goal":         verify_goal,
+    "fetch_api_spec":      fetch_api_spec,
+    "acceptance_test":     acceptance_test,
 }
 
 TOOLS = [
@@ -94,6 +106,9 @@ TOOLS = [
     {"type":"function","function":{"name":"save_checkpoint","description":"CPRS: Save current task state before context reset. Call when context is large (>18k tokens) or task will span multiple sessions.","parameters":{"type":"object","properties":{"project":{"type":"string"},"task":{"type":"string"},"completed_steps":{"type":"array","items":{"type":"string"}},"next_step":{"type":"string"},"key_paths":{"type":"array","items":{"type":"string"}},"summary":{"type":"string"}},"required":["project","task","completed_steps","next_step","key_paths","summary"]}}},
     {"type":"function","function":{"name":"load_checkpoint","description":"CPRS: Load saved checkpoint from previous session to resume interrupted work.","parameters":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]}}},
     {"type":"function","function":{"name":"clear_checkpoint","description":"CPRS: Clear checkpoint after task is fully complete.","parameters":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]}}},
+    {"type":"function","function":{"name":"verify_goal","description":"REQUIRED before marking a task done. Confirm goal was achieved via concrete evidence (files created, commands succeeded, expected output appeared). Returns VERIFIED or VERIFY_FAILED.","parameters":{"type":"object","properties":{"goal":{"type":"string","description":"User-stated goal from the plan."},"evidence":{"type":"object","description":"Structured proof. Keys: files_created (list of paths), commands_run (list of {cmd, exit_code, stdout_excerpt}), expected_output (list of substrings expected in stdout), forbidden_output (list of substrings that must NOT appear), notes (string)."}},"required":["goal","evidence"]}}},
+    {"type":"function","function":{"name":"fetch_api_spec","description":"REQUIRED before writing HTTP integration code (requests/httpx/aiohttp). Fetches OpenAPI/Swagger/docs page so integration uses real param types. Provide a URL or an API name (will search).","parameters":{"type":"object","properties":{"url_or_name":{"type":"string"}},"required":["url_or_name"]}}},
+    {"type":"function","function":{"name":"acceptance_test","description":"REQUIRED before final task completion (after verify_goal passes). Provide a small runnable Python or shell snippet that proves the goal works end-to-end, plus an expected_outcome substring (or 'exit 0' for any successful run).","parameters":{"type":"object","properties":{"goal":{"type":"string"},"test_code":{"type":"string","description":"Runnable Python (default) or shell (starts with bash). Should produce expected_outcome in stdout."},"expected_outcome":{"type":"string","description":"Substring to look for, or 'exit 0' for any clean exit."}},"required":["goal","test_code","expected_outcome"]}}},
 ]
 
 SILENT_TOOLS = {
@@ -110,6 +125,10 @@ class Agent:
         self.quiet     = quiet
         self.emit_cb   = emit_cb
         self._timeline = []
+        self.fsm        = PlanFSM()
+        self.budget     = TokenBudget()
+        self.loop_guard = LoopGuard()
+        self.validator  = RuntimeValidator()
         self.reset_messages()
 
     def _emit(self, event: dict):
@@ -132,13 +151,16 @@ class Agent:
 
     def reset_messages(self):
         user_mem = read_memory()
+        from aria.memory.store import read_user_facts
+        facts = read_user_facts() or "(none yet — user has not shared identity)"
         self.messages = [{
             "role": "system",
             "content": SYSTEM_PROMPT.format(
                 cwd=os.getcwd(),
                 home=str(Path.home()),
-                time=datetime.now().strftime("%Y-%m-%d %H:%M"),
-                user_memory=user_mem
+                time=datetime.now().strftime("%Y-%m-%d %H:%M %A"),
+                user_memory=user_mem,
+                user_facts=facts,
             )
         }]
         # CPRS: auto-inject checkpoint if one exists for current project
@@ -170,26 +192,175 @@ class Agent:
                 f"resuming '{cp['task'][:60]}'[/aria.dim]"
             )
 
-    def _trim_context(self, max_tokens: int = 28000):
-        """Remove oldest non-system messages if context is too large."""
-        estimated = sum(len(str(m.get("content", ""))) // 4 for m in self.messages)
-        while estimated > max_tokens and len(self.messages) > 3:
-            # Remove oldest non-system message pair
-            if self.messages[1]["role"] in ("user", "assistant"):
-                self.messages.pop(1)
-                if len(self.messages) > 1 and self.messages[1]["role"] in ("assistant", "tool"):
-                    self.messages.pop(1)
-            estimated = sum(len(str(m.get("content", ""))) // 4 for m in self.messages)
+    def _completion_gate_message(self) -> str:
+        """Return a nudge message if the LLM is trying to finish without verifying.
+
+        Returns empty string when completion is allowed.
+        """
+        # Not in task EXECUTING state → no gate
+        if self.fsm.state != State.EXECUTING:
+            return ""
+        if self.fsm.skip_verification:
+            return ""
+        if not self.fsm.verified:
+            return (
+                "COMPLETION_BLOCKED: you have not called verify_goal yet. "
+                f"Goal: '{self.fsm.goal[:120]}'. "
+                "Call verify_goal with concrete evidence (files_created, commands_run with exit codes, "
+                "expected_output that proves the goal was met). Do NOT mark the task done before verification."
+            )
+        if not self.fsm.acceptance_passed:
+            return (
+                "COMPLETION_BLOCKED: verify_goal passed, but acceptance_test has not run. "
+                f"Goal: '{self.fsm.goal[:120]}'. "
+                "Write a small runnable proof script and call acceptance_test(goal, test_code, expected_outcome). "
+                "This proves the goal works end-to-end. ARIA v1.6 requires this before any task is marked done."
+            )
+        return ""
+
+    # Safe tools allowed in conversational mode — read-only + identity memory.
+    _CONVERSATIONAL_TOOLS = {"save_memory", "read_memory", "search_web"}
+
+    def _run_conversational(self):
+        """Fast path for greetings, questions, explanations.
+
+        Allows a tiny set of safe tools (save_memory, read_memory, search_web) so the
+        model can persist user identity or look up current facts during chat.
+        """
+        # Build a filtered tools list — only the safe set
+        safe_tools = [t for t in TOOLS if t["function"]["name"] in self._CONVERSATIONAL_TOOLS]
+        livestream.set_thinking()
+        self._emit({"type": "thinking"})
+        _on_token = (lambda t: self._emit({"type": "token", "text": t})) if self.emit_cb else None
+        # Allow up to 3 tool-call rounds in chat (memory save + reply)
+        for _ in range(3):
+            try:
+                msg_dict, tool_calls, text = stream_response(
+                    self.client, self.model, self.messages, tools=safe_tools, on_token=_on_token
+                )
+            except RuntimeError as e:
+                console.print(f"\n  [aria.error]◉[/aria.error] [aria.dim]{e}[/aria.dim]")
+                return
+            self.messages.append(msg_dict)
+            if not tool_calls:
+                print_response(text)
+                break
+            # Execute the safe tool call(s)
+            for tc in tool_calls:
+                name = tc["function"]["name"]
+                if name not in self._CONVERSATIONAL_TOOLS:
+                    result = f"ERROR: tool '{name}' not allowed in conversational mode."
+                else:
+                    try:
+                        args = json.loads(tc["function"]["arguments"])
+                    except json.JSONDecodeError:
+                        args = {}
+                    fn = TOOL_MAP.get(name)
+                    try:
+                        result = fn(**args) if fn else f"ERROR: unknown tool '{name}'"
+                    except TypeError as e:
+                        result = f"ERROR: wrong arguments for {name} — {e}"
+                self.messages.append({"role": "tool", "tool_call_id": tc["id"], "content": str(result)})
+        livestream.set_done("Done")
+        tok = sum(len(str(m.get("content",""))) // 4 for m in self.messages)
+        update_tokens(tok, self.turn)
+        self._log("Conversational reply")
+
+    def _trim_context(self, max_tokens: int = 24000):
+        """Enforce token budget using delta dedup + FIFO fallback.
+
+        Dedup runs every turn (cheap, finds duplicate tool outputs).
+        FIFO only runs when over budget.
+        """
+        before = self.budget.estimate(self.messages)
+
+        # Always try dedup — cheap and frees space without dropping anything.
+        from aria.context import delta
+        new_msgs, dedup_stats = delta.compress(self.messages)
+        if dedup_stats["dedup_count"]:
+            self.messages = new_msgs
+            self.budget._cache.clear()
+            after_dedup = self.budget.estimate(self.messages)
+            console.print(
+                f"  [aria.cyan]◉ Delta[/aria.cyan] [aria.dim]"
+                f"dedup {dedup_stats['dedup_count']} duplicates · "
+                f"{dedup_stats['chars_saved']:,} chars saved · "
+                f"{before:,} → {after_dedup:,} tok[/aria.dim]"
+            )
+            before = after_dedup
+
+        # FIFO trim + recall pruning if still over budget.
+        if before > max_tokens:
+            # Use latest user message as recall query
+            recall_query = ""
+            for m in reversed(self.messages):
+                if m.get("role") == "user":
+                    recall_query = str(m.get("content", ""))
+                    break
+            self.messages, stats = self.budget.enforce(
+                self.messages, limit=max_tokens, recall_query=recall_query
+            )
+            console.print(
+                f"  [aria.cyan]◉ Budget[/aria.cyan] [aria.dim]"
+                f"{before:,} → {stats['end_tokens']:,} tok · "
+                f"truncated {stats.get('truncated', 0)} · "
+                f"recall {stats.get('recall_dropped', 0)} · "
+                f"FIFO {stats['fifo_dropped']}[/aria.dim]"
+            )
+
+    def _refresh_system_time(self):
+        """Rebuild the system message with current date/time on every turn.
+
+        Without this, the model anchors to session-start time and drifts into
+        thinking it's still that moment hours later. Fresh wall-clock each turn
+        keeps responses present-aware.
+        """
+        if not self.messages or self.messages[0].get("role") != "system":
+            return
+        from aria.memory.store import read_memory, read_user_facts
+        facts = read_user_facts() or "(none yet — user has not shared identity)"
+        self.messages[0]["content"] = SYSTEM_PROMPT.format(
+            cwd=os.getcwd(),
+            home=str(Path.home()),
+            time=datetime.now().strftime("%Y-%m-%d %H:%M %A"),
+            user_memory=read_memory(),
+            user_facts=facts,
+        )
+        # Invalidate token cache for system msg
+        if hasattr(self, "budget"):
+            self.budget._cache.clear()
 
     def run(self, user_input: str):
         self.turn += 1
         self._log(f"Task: {user_input[:60]}")
+        # M1 — harvest identity/preference facts from this user message into memory.json
+        try:
+            from aria.memory.harvest import apply as _harvest_apply
+            captured = _harvest_apply(user_input)
+            if captured:
+                console.print(f"  [aria.cyan]◉ Memory[/aria.cyan] [aria.dim]captured: {', '.join(captured)}[/aria.dim]")
+        except Exception:
+            pass
+        self._refresh_system_time()
         self._trim_context()
         self.messages.append({"role": "user", "content": user_input})
+
+        # Mode routing — conversational gets a fast path with no tools.
+        mode = classify_mode(user_input)
+        if mode == "conversational":
+            self._run_conversational()
+            return
+
+        # Task mode — reset controllers for this turn, then run full loop.
+        self.fsm.reset()
+        self.fsm.begin_task()
+        self.loop_guard.reset()
+        tool_guard.reset_turn_counts()
+        # Validator harvests no-go list from user message (don't reset across task — sticks per session)
+        self.validator.scan_user_message(user_input)
+
         step_num = 0
-        recent_errors = []
         MAX_STEPS = 150
-        self._pivot_count = 0  # reset per task
 
         # Warn if context still large after trim
         ctx_est = sum(len(str(m.get("content","")))//4 for m in self.messages)
@@ -216,6 +387,8 @@ class Agent:
         invalid_tool_retries = 0
 
         while step_num < MAX_STEPS:
+            # Trim context at start of each loop iteration to prevent buildup during long runs
+            self._trim_context()
             livestream.set_thinking()
             self._emit({"type": "thinking"})
             _on_token = (lambda t: self._emit({"type": "token", "text": t})) if self.emit_cb else None
@@ -263,11 +436,30 @@ class Agent:
             self.messages.append(msg_dict)
 
             if not tool_calls:
+                # Runtime validator — reject false "task complete" claims, catch stale beliefs.
+                recent_results = [m.get("content","") for m in self.messages[-8:] if m.get("role")=="tool"]
+                rej = self.validator.check_completion_claim(text, recent_results)
+                if rej:
+                    self.messages.append({"role": "user", "content": rej})
+                    console.print(f"  [aria.warning]⚠ Validator:[/aria.warning] [aria.dim]{rej.splitlines()[0][:80]}[/aria.dim]")
+                    continue
+                stale = self.validator.track_claims(text)
+                if stale:
+                    self.messages.append({"role": "user", "content": stale})
+                    console.print(f"  [aria.warning]⚠ Validator:[/aria.warning] [aria.dim]{stale.splitlines()[0][:80]}[/aria.dim]")
+                    continue
+                # Completion gate — block "task done" until verify_goal + acceptance_test pass.
+                gate_msg = self._completion_gate_message()
+                if gate_msg:
+                    self.messages.append({"role": "user", "content": gate_msg})
+                    console.print(f"  [aria.warning]⚠ Gate:[/aria.warning] [aria.dim]{gate_msg.splitlines()[0][:80]}[/aria.dim]")
+                    continue
                 print_response(text)
                 self._log("Task complete")
                 livestream.set_done("Task complete")
                 tok = sum(len(str(m.get("content",""))) // 4 for m in self.messages)
                 update_tokens(tok, self.turn)
+                self.fsm.mark_done()
                 break
 
             rejected = False
@@ -289,11 +481,72 @@ class Agent:
                         )
                     self._emit({"type": "tool", "name": name, "phrase": phrase, "step": step_num})
 
-                fn = TOOL_MAP.get(name)
-                try:
-                    result = fn(**args) if fn else f"ERROR: unknown tool '{name}'"
-                except TypeError as e:
-                    result = f"ERROR: wrong arguments for {name} — {e}"
+                # FSM gate — block mutating tools unless plan is approved.
+                allowed, reason = self.fsm.can_call(name)
+                if not allowed:
+                    result = reason
+                    console.print(f"     [aria.warning]⚠ FSM:[/aria.warning] [aria.dim]{reason}[/aria.dim]")
+                else:
+                    # Tool guard — pre-execution validation (pip, rm -rf, pydantic v1, spec required, etc.)
+                    tg_ok, tg_msg = tool_guard.validate(name, args, fsm=self.fsm)
+                    # Runtime validator — hallucination + no-go list
+                    being_created = name in {"write_file", "new_project"}
+                    rv_ok, rv_msg = self.validator.check_tool_call(name, args, being_created=being_created)
+                    if not tg_ok:
+                        result = tg_msg
+                        console.print(f"     [aria.warning]⚠ Guard:[/aria.warning] [aria.dim]{tg_msg.splitlines()[0][:80]}[/aria.dim]")
+                    elif not rv_ok:
+                        result = rv_msg
+                        console.print(f"     [aria.warning]⚠ Validator:[/aria.warning] [aria.dim]{rv_msg.splitlines()[0][:80]}[/aria.dim]")
+                    else:
+                        fn = TOOL_MAP.get(name)
+                        try:
+                            result = fn(**args) if fn else f"ERROR: unknown tool '{name}'"
+                        except TypeError as e:
+                            result = f"ERROR: wrong arguments for {name} — {e}"
+                        # Soft advisory (e.g., pydantic v1 detected) prepended to result
+                        if tg_msg.startswith("WARN_"):
+                            result = f"{tg_msg}\n---\n{result}"
+
+                # Relation graph — auto-record key events
+                from aria.context import relation as _rel
+                project = os.path.basename(os.getcwd())
+                task_id = f"{project}-{self.turn}"
+                if name in ("write_file", "edit_file") and args.get("path"):
+                    _rel.add(args["path"], "modified_by", task_id)
+                elif name == "delete_file" and args.get("path"):
+                    _rel.add(args["path"], "deleted_in", task_id)
+                elif name == "new_project" and args.get("name"):
+                    _rel.add(args["name"], "created_at", datetime.now().isoformat())
+
+                # FSM transitions based on tool results.
+                prev_state = self.fsm.state
+                if name == "create_plan":
+                    self.fsm.on_create_plan(args)
+                    if str(result).strip() == "APPROVED":
+                        self.fsm.state = State.EXECUTING
+                        # Heuristic — if goal is purely read/explain/analyze, skip verification.
+                        g_low = (self.fsm.goal or "").lower()
+                        if any(w in g_low for w in ("read ", "explain ", "describe ", "analyze ", "review ")) \
+                                and not any(w in g_low for w in ("create ", "build ", "fix ", "write ", "edit ", "modify ", "implement ", "run ", "test ", "deploy ")):
+                            self.fsm.skip_verification = True
+                # Emit state change for web UI
+                if self.fsm.state != prev_state:
+                    self._emit({"type": "fsm_state", "state": self.fsm.state.value, "goal": self.fsm.goal[:120]})
+
+                if name == "verify_goal" and str(result).startswith("VERIFIED"):
+                    self.fsm.verified = True
+                    _rel.add(project, "verified_at", task_id)
+                if name == "acceptance_test" and str(result).startswith("ACCEPTANCE_PASSED"):
+                    self.fsm.acceptance_passed = True
+                    _rel.add(project, "accepted_at", task_id)
+                if name == "fetch_api_spec":
+                    # Record domain so tool_guard knows spec was fetched
+                    import re as _re
+                    m = _re.search(r"domain ['\"]([^'\"]+)['\"]", str(result))
+                    if m:
+                        self.fsm.spec_fetched_domains.add(m.group(1))
+                        _rel.add(m.group(1), "spec_fetched_for", task_id)
 
                 # AST validation hook — runs after write_file on .py files
                 if name == "write_file":
@@ -331,52 +584,27 @@ class Agent:
                         result = str(result) + "\n\n" + rag_context
                         console.print(f"     [aria.cyan]◉ RAG:[/aria.cyan] [aria.dim]Docs + web search injected[/aria.dim]")
 
-                # Loop detection — same error repeating
-                if name == "run_command" and ("ERROR" in str(result) or "Traceback" in str(result)):
-                    err_sig = str(result)[:120]
-                    recent_errors.append(err_sig)
+                # Phase C — if this successful call followed a recent error, persist as learned fix
+                self.loop_guard.maybe_capture_fix(name, args, str(result))
 
-                    if len(recent_errors) >= 3 and len(set(recent_errors[-3:])) == 1:
-                        pivot_count = getattr(self, '_pivot_count', 0)
-
-                        if pivot_count < 2:
-                            # Pivot — try a different approach
-                            self._pivot_count = pivot_count + 1
-                            recent_errors.clear()
-                            console.print(
-                                f"\n  [aria.warning]◉[/aria.warning] [aria.dim]"
-                                f"Same error 3x — pivoting to alternative approach "
-                                f"(attempt {self._pivot_count}/2)[/aria.dim]"
-                            )
-                            self.messages.append({
-                                "role": "user",
-                                "content": (
-                                    "You are stuck in a loop. Your current approach is not working. "
-                                    "STOP what you are doing. Analyze the root cause of the repeated error. "
-                                    "Try a completely different approach — different library, different implementation, "
-                                    "different architecture. Do NOT repeat what you just tried. "
-                                    "Think from scratch and proceed."
-                                )
-                            })
-                        else:
-                            # All pivots exhausted — stop and report clearly
-                            console.print(
-                                "\n  [aria.error]◉[/aria.error] [aria.dim]"
-                                "Could not resolve after 2 alternative approaches. Reporting to you.[/aria.dim]"
-                            )
-                            self.messages.append({
-                                "role": "user",
-                                "content": (
-                                    "All approaches failed. Give the user a clear, non-technical explanation of: "
-                                    "1) What the blocker is. "
-                                    "2) What you tried. "
-                                    "3) The simplest possible solution they can do — even if it means using a different tool or approach entirely."
-                                )
-                            })
-                            msg_dict, _, text = stream_response(self.client, self.model, self.messages, TOOLS)
-                            print_response(text)
-                            rejected = True
-                            break
+                # Loop detection via LoopGuard
+                signal = self.loop_guard.observe(name, str(result))
+                if signal == "PIVOT":
+                    console.print(
+                        f"\n  [aria.warning]◉[/aria.warning] [aria.dim]"
+                        f"Same error 3x — pivoting (attempt {self.loop_guard.pivot_count}/2)[/aria.dim]"
+                    )
+                    self.messages.append({"role": "user", "content": PIVOT_MESSAGE})
+                elif signal == "EXHAUSTED":
+                    console.print(
+                        "\n  [aria.error]◉[/aria.error] [aria.dim]"
+                        "All pivots exhausted — reporting honestly to user.[/aria.dim]"
+                    )
+                    self.messages.append({"role": "user", "content": EXHAUSTED_MESSAGE})
+                    msg_dict, _, text = stream_response(self.client, self.model, self.messages, TOOLS)
+                    print_response(text)
+                    rejected = True
+                    break
 
             if rejected:
                 break

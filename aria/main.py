@@ -26,8 +26,11 @@ PT_STYLE = PTStyle.from_dict({
 
 def onboarding(args) -> tuple:
     try:
-        # Fast path — already configured, skip TnC and prompts
-        if is_configured() and not args.api_key:
+        # Fast path — already configured, skip TnC and prompts.
+        # User can force re-onboarding via --reset or by explicitly passing --api-key on the CLI.
+        explicit_api_key = any(a in sys.argv for a in ("--api-key", "--apikey"))
+        force_reset = "--reset" in sys.argv
+        if is_configured() and not explicit_api_key and not force_reset:
             api_key  = get("api_key") or "aria"
             workspace = get("workspace") or os.getcwd()
             model    = args.model or get("default_model", "llama3.3")
@@ -139,7 +142,8 @@ def main():
     session = PromptSession(
         history=InMemoryHistory(),
         bottom_toolbar=get_toolbar,
-        refresh_interval=0.5,
+        refresh_interval=1.0,
+        enable_history_search=True,
     )
 
     _saved = [False]  # prevent double save

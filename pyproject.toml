@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aria-x"
-version = "1.5.5"
-description = "ARIA — Autonomous Reasoning and Intelligent Agent. Your project-aware coding partner."
+version = "1.6.0"
+description = "ARIA — Autonomous Reasoning and Intelligent Agent. Writes code AND proves it works — verified end-to-end."
 authors = [{name = "Sumit", email = "samsungsumitv461@gmail.com"}]
 readme = "README.md"
 license = "LicenseRef-ARIA-Source-License"

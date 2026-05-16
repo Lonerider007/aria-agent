@@ -28,14 +28,16 @@ def _run_stream_in_thread(client, model, messages, tools, timeout, result_holder
     """Run API call in a thread so main thread can enforce hard timeout."""
     try:
         import httpx
-        stream = client.chat.completions.create(
+        kwargs = dict(
             model=model,
             messages=messages,
-            tools=tools,
-            tool_choice="auto",
             stream=True,
-            timeout=httpx.Timeout(connect=15.0, read=90.0, write=15.0, pool=15.0),
+            timeout=httpx.Timeout(connect=15.0, read=300.0, write=15.0, pool=15.0),
         )
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+        stream = client.chat.completions.create(**kwargs)
         collected_content = ""
         collected_tool_calls = {}
         for chunk in stream:
@@ -82,36 +84,42 @@ def stream_response(client, model: str, messages: list, tools: list, on_token=No
     t = threading.Thread(target=_run_stream_in_thread, args=(client, model, messages, tools, timeout, result_holder), daemon=True)
     t.start()
 
-    with Live(console=console, refresh_per_second=10) as live:
-        live.update(Text.from_markup(f"\n  [#7C3AED]◉[/#7C3AED] [#6B7280]Thinking...[/#6B7280]"))
-        while not result_holder["done"]:
-            elapsed = time.time() - start_time
-            if elapsed > timeout:
-                result_holder["abort"] = True
-                live.update(Text(""))
-                raise RuntimeError("API_TIMEOUT")
-            now = time.time()
-            if now - last_pulse > 0.1:
-                icon = PULSE[pulse_idx % len(PULSE)]
-                e_str = _fmt_time(elapsed)
-                tok = _fmt_tokens(str(total_chars + len(result_holder["partial_text"])))
-                partial = result_holder["partial_text"]
-                if partial:
-                    preview = Text()
-                    preview.append("\n  ◉ ", style="#7C3AED bold")
-                    preview.append(partial[-300:], style="white")
-                    live.update(preview)
-                    if on_token:
-                        pass  # tokens already collected, emit on_token handled in thread
-                else:
-                    live.update(Text.from_markup(
-                        f"\n  [#7C3AED]{icon}[/#7C3AED] [#6B7280]Thinking...[/#6B7280]"
-                        f"  [#4A4A6A]{e_str} · ↑ {tok} tokens[/#4A4A6A]"
-                    ))
-                pulse_idx += 1
-                last_pulse = now
-            time.sleep(0.05)
-        live.update(Text(""))
+    try:
+        with Live(console=console, refresh_per_second=10) as live:
+            live.update(Text.from_markup(f"\n  [#7C3AED]◉[/#7C3AED] [#6B7280]Thinking...[/#6B7280]"))
+            while not result_holder["done"]:
+                elapsed = time.time() - start_time
+                if elapsed > timeout:
+                    result_holder["abort"] = True
+                    live.update(Text(""))
+                    raise RuntimeError("API_TIMEOUT")
+                now = time.time()
+                if now - last_pulse > 0.1:
+                    icon = PULSE[pulse_idx % len(PULSE)]
+                    e_str = _fmt_time(elapsed)
+                    tok = _fmt_tokens(str(total_chars + len(result_holder["partial_text"])))
+                    partial = result_holder["partial_text"]
+                    if partial:
+                        preview = Text()
+                        preview.append("\n  ◉ ", style="#7C3AED bold")
+                        preview.append(partial[-300:], style="white")
+                        live.update(preview)
+                        if on_token:
+                            pass  # tokens already collected, emit on_token handled in thread
+                    else:
+                        live.update(Text.from_markup(
+                            f"\n  [#7C3AED]{icon}[/#7C3AED] [#6B7280]Thinking...[/#6B7280]"
+                            f"  [#4A4A6A]{e_str} · ↑ {tok} tokens[/#4A4A6A]"
+                        ))
+                    pulse_idx += 1
+                    last_pulse = now
+                time.sleep(0.05)
+            live.update(Text(""))
+    finally:
+        # Ensure thread cleanup to prevent resource leaks
+        if t.is_alive():
+            result_holder["abort"] = True
+            t.join(timeout=5.0)  # Wait up to 5 seconds for thread to finish
 
     if result_holder["error"]:
         err = result_holder["error"]

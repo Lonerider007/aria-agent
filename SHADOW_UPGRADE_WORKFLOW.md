@@ -2,6 +2,18 @@
 
 This document describes a safe methodology for upgrading ARIA's own codebase while maintaining system stability.
 
+## v1.6 case study — applied successfully 2026-05-16
+
+The v1.6 comeback release was built and validated using this exact workflow:
+
+1. **Shadow:** all 9 architectural changes (mode router, FSM, delta context, recall, tool guards, loop guard, verify_goal, fetch_api_spec, acceptance_test, runtime validator, relation graph) were implemented directly in the installed pipx venv as the experimentation surface.
+2. **Validated live:** burn-in test in `/home/sumit/projects/aria-testing/` with `nemotron-3-super:cloud`. All gates fired in real flows: FSM blocked rogue `write_file`, tool guard blocked bare `pip install`, verify_goal + acceptance_test ran on every code-generating task, no-go list honored. See `ARIA_testing_logs.txt` for full transcript.
+3. **Promoted:** changes were rsync'd from venv to source tree at `/home/sumit/ARIA/source_v1.6/ARIA-backup-20260511/`. Cross-version check confirmed 1.6.0 across `pyproject.toml`, `aria/__init__.py`, `aria/ui/banner.py`.
+4. **User memory preserved:** `~/.aria/memory.json`, `config.json`, `checkpoints/` untouched. No migration needed.
+5. **Rollback option:** previous source zip retained in `~/project_vault/aria-developer-20260513.zip`.
+
+Lesson: working directly in the installed venv (instead of a separate shadow dir) is acceptable for solo-developer workflow when source-tree sync is the final promotion step. Faster iteration, same safety, as long as the sync-to-source step isn't skipped.
+
 ## Overview
 The shadow self-upgrade approach allows ARIA to experiment with and validate upgrades in an isolated environment before promoting changes to the active codebase. This minimizes risk of breaking the running system.
 
